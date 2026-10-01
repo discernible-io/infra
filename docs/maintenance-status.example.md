@@ -21,6 +21,7 @@ Host-local record of **installed automation on this machine**. Lives in **`~/inf
 | `upgrade-host-packages-weekly.timer` | | Sun ~02:00 (dnf upgrade; no auto-reboot by default) |
 | `cleanup-disk-space-weekly.timer` | | Sun ~03:00 |
 | `scan-containers-vulnerabilities-weekly.timer` | | Sun ~04:30 |
+| `update-monitoring-images-weekly.timer` | | Sun ~05:30 (Grafana/Loki rebuild; images ≥ 3d old) |
 | `certbot-renew.timer` | | OS package (if present) |
 
 Quick check from `~/infra`:

@@ -2,7 +2,8 @@
 
 ## 1. Patch and Package Hygiene
 - Keep the host OS, Podman, container images, Node.js runtimes, and npm packages patched.
-- Automate host OS updates via **`upgrade-host-packages-weekly.sh`** / `manage-weekly-maintenance.sh install` (Sunday `dnf upgrade`; reboot when `/var/lib/infra/reboot-required` appears, or set `AUTO_REBOOT=1`). Routinely review `npm audit` output before applying application dependency fixes.
+- Automate host OS updates via **`upgrade-host-packages-weekly.sh`** / `manage-weekly-maintenance.sh install` (Sunday `dnf upgrade`; reboot when `/var/lib/infra/reboot-required` appears, or set `AUTO_REBOOT=1`).
+- Automate Grafana/Loki image rebuilds via **`update-monitoring-images-weekly.sh`** (Sunday; skips unless local/upstream images are at least **3 days** old). Bumping pinned versions in `grafanaloki-app/.env` remains manual. Routinely review `npm audit` output before applying application dependency fixes.
 
 ## 3. Harden TLS and Reverse Proxies
 - Configure Nginx to set security headers: `Strict-Transport-Security`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, and a tailored `Content-Security-Policy`.

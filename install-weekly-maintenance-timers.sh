@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Legacy alias — prefer manage-weekly-maintenance.sh.
-# Install and enable weekly maintenance timers (OS upgrade + disk cleanup + Trivy scan).
+# Install and enable weekly maintenance timers (OS upgrade + disk cleanup + Trivy + monitoring images).
 #
 # Usage:
 #   sudo ./install-weekly-maintenance-timers.sh install

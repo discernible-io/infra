@@ -37,6 +37,7 @@ Prefer **`manage-weekly-maintenance.sh`** (`install` | `enable` | `disable` | `s
 | `upgrade-host-packages-weekly.sh` via `upgrade-host-packages-weekly.timer` | Sun **02:00** (+ up to 20 min jitter) | `dnf upgrade -y` (Alma/RHEL-family). Logs under `/var/log/infra-host-package-upgrade/`. Sets `/var/lib/infra/reboot-required` when `dnf needs-restarting -r` says so; **does not reboot** unless `AUTO_REBOOT=1` / `--reboot-if-needed`. Runs before cleanup so old kernels can be pruned. |
 | `cleanup-disk-space-weekly.sh` via `cleanup-disk-space-weekly.timer` | Sun **03:00** (+ up to 30 min jitter) | Journal, `/var/log`, DNF cache, old kernels, caches, optional Podman prune, old Trivy artifacts under `~/infra-app/trivy-scan-results/`. |
 | `scan-containers-vulnerabilities-weekly.sh` via `scan-containers-vulnerabilities-weekly.timer` | Sun **04:30** (+ up to 15 min jitter) | Trivy on Podman + optional GHCR pulls, git HEAD tags, `trivy fs` on `*-idc` repos, SBOM diff; reports under `~/infra-app/trivy-scan-results/`. Or GitHub `container-vulnerability-scan.yml`. |
+| `update-monitoring-images-weekly.sh` via `update-monitoring-images-weekly.timer` | Sun **05:30** (+ up to 15 min jitter) | Pull upstream Grafana/Loki bases (must be ≥ **3 days** old), rebuild hardened images from `grafanaloki-app`, redeploy `monitoring-pod`. Skips when local images are newer than `MIN_IMAGE_AGE_DAYS` (default 3) unless `--force`. Does **not** bump `.env` pins — only rebuilds the pinned tags. |
 | `verify-certs-in-apps-weekly.sh` | Manual / after deploy | Validates cert files and permissions under app trees; good alongside renewal checks. |
 | `manage-monitoring-pods.sh status` | Manual | Confirms `monitor-pods-liveness.timer` and recent `/var/log/pod-monitor.log` lines. |
 
@@ -61,8 +62,9 @@ Prefer **`manage-weekly-maintenance.sh`** (`install` | `enable` | `disable` | `s
 | `fix-audit-rules-oneoff.sh` | Repair audit watch rules when secrets paths moved or are missing. |
 | `configure-host-firewall-oneoff.sh` | Restrict inbound TCP to admin + public ports from `~/infra-app/infra-env-helper.sh`. Use **`sudo ./configure-host-firewall-oneoff.sh enable permanent`**; verify with **`sudo … status`** (non-root cannot read iptables). |
 | `configure-port-forwarding-oneoff.sh` | iptables 443→`INFRA_PORT_FORWARD_DEST` REDIRECT; `infra-port-forward-restore.sh` re-applies after reboot when installed permanent. |
-| `manage-weekly-maintenance.sh` | `install` \| `enable` \| `disable` \| `status` for OS upgrade + cleanup + Trivy weekly timers. |
+| `manage-weekly-maintenance.sh` | `install` \| `enable` \| `disable` \| `status` for OS upgrade + cleanup + Trivy + monitoring-image weekly timers. |
 | `upgrade-host-packages-weekly.sh` | Manual / timer: `--check`, `--security-only`, `--reboot-if-needed`. |
+| `update-monitoring-images-weekly.sh` | Manual / timer: rebuild Grafana/Loki when images ≥ 3d old; `--check` / `--force`. |
 | `manage-monitoring-pods.sh` | `install`, `enable`, `disable`, or `status` for pod monitoring. |
 | `enable-rootless-podman-helper.sh` | `enable` \| `status` — linger + `podman.socket` for **`INFRA_USER`** (or **`MONITOR_USER`**). |
 | `enable-podman-boot-autostart.sh` | Linger + podman.socket + podman-restart for **`INFRA_USER`**. |
@@ -116,6 +118,9 @@ Prioritize items that close gaps between “scripts exist” and “long uptime 
 
 5. **Single source of truth for monitoring paths**  
    Document **`MONITOR_USER`** and repo path once; `manage-monitoring-pods.sh` already resolves paths from the script location.
+
+6. **Bump Grafana/Loki version pins**  
+   `update-monitoring-images-weekly.sh` rebuilds the tags in `grafanaloki-app/.env`. Promoting to a newer upstream release (e.g. Grafana 11.6.x → 11.6.y) remains a manual `.env` / Dockerfile change.
 
 ---
 

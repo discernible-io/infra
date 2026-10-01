@@ -61,7 +61,7 @@ IMAGE SOURCES (union, de-duplicated):
     1. Images referenced by running/stopped Podman containers (podman ps -a)
     2. Lines in \$SCAN_MANIFEST (default: $SCAN_RESULTS_DIR/scan-image-manifest.txt)
     3. ghcr.io/\$GHCR_ORG/<repo>/<image>:\$(git rev-parse HEAD) for each *-idc repo
-       under \$INFRA_HOME (signsanctum, signportal, mintclient, clienttest, syntheticlc, slcbackend-slc)
+       under \$INFRA_HOME (signsanctum, signportal, mintclient, api-test-scaffold, syntheticlc, slcbackend-slc)
     4. GRAFANA_IMAGE, LOKI_IMAGE from \$INFRA_HOME/grafanaloki-app/.env when present
     5. localhost/monitoring-nginx:latest when that tag exists locally
 
@@ -174,7 +174,7 @@ images_from_git_head() {
         [signsanctum-idc]="signsanctum-api signsanctum-nginx"
         [signportal-idc]="signportal-app signportal-nginx"
         [mintclient-idc]="mintclient-app mintclient-nginx"
-        [clienttest-idc]="clienttest-idc clienttest-nginx"
+        [api-test-scaffold]="api-test-scaffold-api api-test-scaffold-nginx"
         [syntheticlc]="servertest-api servertest-nginx"
         [slcbackend-slc]="syntheticlc-api syntheticlc-nginx"
     )
@@ -350,7 +350,7 @@ scan_filesystem_repos() {
     "$INFRA_HOME/signsanctum-idc"
     "$INFRA_HOME/signportal-idc"
     "$INFRA_HOME/mintclient-idc"
-    "$INFRA_HOME/clienttest-idc"
+    "$INFRA_HOME/api-test-scaffold"
     "$INFRA_HOME/syntheticlc"
     "$INFRA_HOME/slcbackend-slc"
   )

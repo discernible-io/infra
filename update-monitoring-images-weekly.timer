@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Grafana/Loki monitoring image update weekly
+Documentation=file://__INFRA_REPO__/docs/readme.md
+
+[Timer]
+# After Trivy (04:30) so the prior week's scan still covers the old images;
+# next week's scan validates the rebuilt stack.
+OnCalendar=Sun *-*-* 05:30:00
+Persistent=true
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target

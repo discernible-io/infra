@@ -113,10 +113,12 @@ Scripts that used to be separate entry points are merged with a **subcommand** a
 - **`bootstrap-app-dir-layout.sh`** — Create or repair `*-app/` directory trees
 - **`golive.sh`** — Reboot-persistence bundle: pod monitor, weekly timers, host-uptime, firewall, container restarts (no SSH hardening or cert issue)
 - **`apply-health-recommendations.sh`** — Rootless Podman + weekly maintenance timers + status summary
-- **`manage-weekly-maintenance.sh`** — `install` | `enable` | `disable` | `status` for OS upgrade + cleanup + Trivy weekly timers
+- **`manage-weekly-maintenance.sh`** — `install` | `enable` | `disable` | `status` for OS upgrade + cleanup + Trivy + monitoring-image weekly timers
 - **`install-weekly-maintenance-timers.sh`** — Legacy alias for weekly timer install
 - **`upgrade-host-packages-weekly.sh`** — Weekly `dnf upgrade` (Sun 02:00 timer); `--check` / `--security-only` / `--reboot-if-needed`
 - **`upgrade-host-packages-weekly.{service,timer}`** — Units installed by `manage-weekly-maintenance.sh install`
+- **`update-monitoring-images-weekly.sh`** — Weekly Grafana/Loki rebuild/redeploy when images ≥ 3 days old (Sun 05:30); `--check` / `--force`
+- **`update-monitoring-images-weekly.{service,timer}`** — Units installed by `manage-weekly-maintenance.sh install`
 - **`cleanup-disk-space-weekly.sh`** — Clean journal logs, syslog, and Podman cache (Sun 03:00 timer)
 - **`host-uptime-prep.sh`** — Hourly host health signals (`init`, `enable-permanent`, `status`, `report`)
 - **`enable-rootless-podman-helper.sh`** — Linger + `podman.socket` for rootless Podman

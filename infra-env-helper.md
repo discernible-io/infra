@@ -453,16 +453,17 @@ signing-port map.
 
 ## dedalo47 (alternate template) — dihola signing + webhook stack
 
-Use only if this Alma host actually runs signportal/signsanctum/mintclient/clienttest.
+Use only if this Alma host actually runs signportal/signsanctum/mintclient/api-test-scaffold.
 Do **not** mix with the current IC + agents profile above.
+Former name **clienttest** / `clienttest-app` is deprecated; use `api-test-scaffold` / `api-test-scaffold-app`.
 
-| Service    | Port | Domain (typical)        |
-|------------|------|-------------------------|
-| signportal | 14443 | signportal.dihola.io    |
-| signsanctum| 1443 | signsanctum.dihola.io   |
-| mintclient | 4443 | purchase.dihola.io      |
-| mintclient | 4443 | verify.dihola.io (SAN on purchase cert) |
-| clienttest | 7443 | webhook.dihola.io       |
+| Service           | Port | Domain (typical)        |
+|-------------------|------|-------------------------|
+| signportal        | 14443 | signportal.dihola.io    |
+| signsanctum       | 1443 | signsanctum.dihola.io   |
+| mintclient        | 4443 | purchase.dihola.io      |
+| mintclient        | 4443 | verify.dihola.io (SAN on purchase cert) |
+| api-test-scaffold | 7443 | webhook.dihola.io       |
 
 ```bash
 #!/usr/bin/env bash
@@ -490,7 +491,7 @@ declare -gA INFRA_API_PORTS=(
   [signportal]=14443
   [signsanctum]=1443
   [mintclient]=4443
-  [clienttest]=7443
+  [api-test-scaffold]=7443
 )
 
 INFRA_MONITORING_TCP_PORTS=(3100 3333)
@@ -499,7 +500,7 @@ INFRA_MONITOR_SERVICES=(
   "signportal:signportal-container::14443"
   "signsanctum:signsanctum-container::1443"
   "mintclient:mintclient-container::4443"
-  "clienttest:clienttest-container:${INFRA_HOME}/clienttest-idc/start:7443"
+  "api-test-scaffold:api-test-scaffold-container:${INFRA_HOME}/api-test-scaffold/scripts/deploy-local-podman.sh:7443"
 )
 INFRA_CERT_EMAIL="${INFRA_CERT_EMAIL:-admin@dihola.io}"
 
@@ -519,20 +520,18 @@ OpenClaw/Hermes agent ingress, ironclaw, and the main-tier SLC frontend
 | signsanctum        | 1443 | signsanctum.dihola.io      |
 | mintclient         | 4443 | purchase.dihola.io         |
 | mintclient         | 4443 | verify.dihola.io (SAN on purchase cert) |
-| ironclaw           | 8443 | ironclaw.dihola.io         |
-| slcfrontend (SLC)  | 13443 | lastcradle.io (+ www SAN); slc.dihola.io |
-| identyclaw-agents  | 88   | agent-a/b/c.identyclaw.com (OpenClaw; self-signed) |
-| hermes-agent       | 80   | Hermes Telegram/ingress (`HERMES_*` in `~/hermes-agent-app/env.local`) |
+| ironclaw           | 9443 | ironclaw.dihola.io; **88 → 9443** |
+| slcfrontend (SLC)  | 13443 | lastcradle.io (+ www / identyclaw.com SAN); **443 → 13443** |
+| openclaw-agents    | 8443 | cornelius.dihola.io (+ SANs john/jay) |
+| hermes-agent       | 10443 | hermes.dihola.io; **80 → 10443** (Telegram); **7443 → 10443** (Passport A2A → nginx → pod `:9900`) |
 | monitoring         | 3100/3333 | grafana43.dihola.io     |
 
-Also allowed: **443** → **slcfrontend** **13443**, **22** (SSH). Port **80** is
-Hermes ingress on this host (certbot HTTP-01 still uses temporary allow when needed).
-OpenClaw agents use self-signed TLS in `~/openclaw-agents-app/certs/` (not Let's Encrypt
-via infra scripts). Former slcfrontend publish **10443** is blocked.
+Also allowed: **22** (SSH). Certbot HTTP-01 still uses a temporary allow on **80** when needed.
+OpenClaw + Hermes nginx certs are Let's Encrypt via `INFRA_APP_DOMAINS` (Telegram rejects self-signed).
 
 ```bash
 sudo ./configure-host-firewall-oneoff.sh enable permanent
-sudo ./configure-port-forwarding-oneoff.sh enable permanent 443 slcfrontend
+sudo ./configure-port-forwarding-oneoff.sh enable permanent
 # or: sudo ./golive.sh --with-port-forwarding
 ```
 
@@ -555,6 +554,9 @@ INFRA_CERT_DOMAINS=(
   "purchase.dihola.io"
   "webhook.dihola.io"
   "ironclaw.dihola.io"
+  # Telegram rejects self-signed certificates — CA-signed required for webhook ingress.
+  "cornelius.dihola.io"
+  "hermes.dihola.io"
   "slc.dihola.io"
   "lastcradle.io"
   "$INFRA_MONITORING_DOMAIN"
@@ -562,30 +564,40 @@ INFRA_CERT_DOMAINS=(
 
 declare -gA INFRA_CERT_SAN_DOMAINS=(
   ["purchase.dihola.io"]="verify.dihola.io"
-  # Primary LE name for main-tier SLC frontend; www shares the same cert.
-  ["lastcradle.io"]="www.lastcradle.io"
+  # Primary LE name for main-tier SLC frontend; www + IdentyClaw apex share the same cert
+  # (identyclaw.com redirect is served by slcfrontend on 443→13443).
+  ["lastcradle.io"]="www.lastcradle.io identyclaw.com"
+  # OpenClaw agents share a single nginx cert file (fullchain.pem/privkey.pem)
+  # under openclaw-agents-app/certs. Include all configured agent ingress
+  # hostnames as SANs.
+  ["cornelius.dihola.io"]="john.dihola.io jay.dihola.io"
 )
 
 declare -gA INFRA_APP_DOMAINS=(
   ["${INFRA_HOME}/signportal-app"]="signportal.dihola.io"
   ["${INFRA_HOME}/signsanctum-app"]="signsanctum.dihola.io"
   ["${INFRA_HOME}/mintclient-app"]="purchase.dihola.io"
-  ["${INFRA_HOME}/clienttest-app"]="webhook.dihola.io"
-  ["${INFRA_HOME}/ironclaw-app"]="ironclaw.dihola.io"
-  # Primary LE name lastcradle.io (+ SAN www.lastcradle.io).
+  # Former ~/clienttest-app — deprecated; certs install to api-test-scaffold-app.
+  ["${INFRA_HOME}/api-test-scaffold-app"]="webhook.dihola.io"
+  ["${INFRA_HOME}/ironclaw-agents-app"]="ironclaw.dihola.io"
+  # Primary LE name lastcradle.io (+ SAN www.lastcradle.io, identyclaw.com).
   ["${INFRA_HOME}/slcfrontend-app"]="lastcradle.io"
   ["${INFRA_HOME}/grafanaloki-app"]="$INFRA_MONITORING_DOMAIN"
-  # openclaw-agents-app / hermes-agent-app use self-signed PEMs — not in INFRA_APP_DOMAINS / LE install.
+  # openclaw-agents-app uses a CA-signed nginx cert so Telegram webhooks work.
+  ["${INFRA_HOME}/openclaw-agents-app"]="cornelius.dihola.io"
+  # hermes-agents-app — CA-signed cert for Telegram webhook ingress on :10443 (80→10443).
+  ["${INFRA_HOME}/hermes-agents-app"]="hermes.dihola.io"
 )
 
 declare -gA INFRA_APP_ENV_FILES=(
   ["${INFRA_HOME}/signportal-app"]="secrets/secrets.env"
   ["${INFRA_HOME}/signsanctum-app"]="secrets/secrets.env"
   ["${INFRA_HOME}/mintclient-app"]="secrets/secrets.env"
-  ["${INFRA_HOME}/clienttest-app"]="secrets/secrets.env"
-  ["${INFRA_HOME}/ironclaw-app"]="secrets/secrets.env"
+  ["${INFRA_HOME}/api-test-scaffold-app"]="secrets/secrets.env"
+  ["${INFRA_HOME}/ironclaw-agents-app"]="secrets/secrets.env"
   ["${INFRA_HOME}/slcfrontend-app"]="secrets/secrets.env"
-  ["${INFRA_HOME}/hermes-agent-app"]="env.local"
+  ["${INFRA_HOME}/openclaw-agents-app"]="env.local"
+  ["${INFRA_HOME}/hermes-agents-app"]="env.local"
   ["${INFRA_HOME}/grafanaloki-app"]=".env"
 )
 
@@ -593,17 +605,26 @@ declare -gA INFRA_API_PORTS=(
   [signportal]=14443
   [signsanctum]=1443
   [mintclient]=4443
-  [ironclaw]=8443
+  [ironclaw]=9443
   [slcfrontend]=13443
   # Telegram Bot API webhook ports: 80, 88, 443, 8443.
-  # OpenClaw uses 88 (not template 9443); Hermes Telegram/ingress uses 80.
-  [identyclaw-agents]=88
-  [hermes-agent]=80
+  # openclaw-agents uses 8443; hermes-agent ingress 10443; ironclaw 9443.
+  [openclaw-agents]=8443
+  [hermes-agent]=10443
 )
 
 # 443 → slcfrontend (slc.dihola.io). Former mintclient redirect replaced on this host.
 INFRA_PORT_FORWARD_SERVICE="${INFRA_PORT_FORWARD_SERVICE:-slcfrontend}"
 INFRA_PORT_FORWARD_DEST="${INFRA_PORT_FORWARD_DEST:-${INFRA_API_PORTS[$INFRA_PORT_FORWARD_SERVICE]}}"
+
+# Extra inbound REDIRECTs (Telegram-compatible aliases): source:dest|service
+# ironclaw 9443 via 88; hermes-agent 10443 via 80.
+# 7443 is the Passport metadata.webhook_url port (same nginx as :10443 → A2A :9900).
+INFRA_EXTRA_PORT_FORWARDS=(
+  "88:ironclaw"
+  "80:hermes-agent"
+  "7443:hermes-agent"
+)
 
 INFRA_MONITORING_TCP_PORTS=(3100 3333)
 INFRA_PUBLIC_API_TCP_PORTS=(
@@ -612,19 +633,20 @@ INFRA_PUBLIC_API_TCP_PORTS=(
   "${INFRA_API_PORTS[mintclient]}"
   "${INFRA_API_PORTS[ironclaw]}"
   "${INFRA_API_PORTS[slcfrontend]}"
-  "${INFRA_API_PORTS[identyclaw-agents]}"
+  "${INFRA_API_PORTS[openclaw-agents]}"
   "${INFRA_API_PORTS[hermes-agent]}"
 )
-INFRA_PUBLIC_TCP_PORTS=(443 "${INFRA_PUBLIC_API_TCP_PORTS[@]}" "${INFRA_MONITORING_TCP_PORTS[@]}")
+# 80 / 88 are public Telegram webhook entry ports (REDIRECT to hermes / ironclaw).
+# 7443 is the Passport A2A alias (REDIRECT to hermes :10443 → nginx → :9900).
+INFRA_PUBLIC_TCP_PORTS=(80 88 443 7443 "${INFRA_PUBLIC_API_TCP_PORTS[@]}" "${INFRA_MONITORING_TCP_PORTS[@]}")
 INFRA_ADMIN_TCP_PORTS=(22)
-# Former development publish port for slcfrontend (moved to 13443).
-INFRA_BLOCKED_PUBLIC_TCP_PORTS=(10443)
+INFRA_BLOCKED_PUBLIC_TCP_PORTS=()
 
 INFRA_MONITOR_SERVICES=(
   "signportal:signportal-container::14443"
   "signsanctum:signsanctum-container::1443"
   "mintclient:mintclient-container::4443"
-  "ironclaw:ironclaw-reborn::9443"
+  # ironclaw-agents-app is present for certs; no ironclaw container is running.
   "slcfrontend:slcfrontend-nginx::13443"
   "openclaw-agents:openclaw-nginx::8443"
   # Hermes ingress (HERMES_TELEGRAM_PORT / HERMES_INGRESS_PORT=10443)

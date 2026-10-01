@@ -30,9 +30,11 @@ SCAN_SERVICE="scan-containers-vulnerabilities-weekly.service"
 SCAN_TIMER="scan-containers-vulnerabilities-weekly.timer"
 CLEANUP_SERVICE="cleanup-disk-space-weekly.service"
 CLEANUP_TIMER="cleanup-disk-space-weekly.timer"
+MONITORING_UPDATE_SERVICE="update-monitoring-images-weekly.service"
+MONITORING_UPDATE_TIMER="update-monitoring-images-weekly.timer"
 
-WEEKLY_TIMERS=("$UPGRADE_TIMER" "$CLEANUP_TIMER" "$SCAN_TIMER")
-WEEKLY_SERVICES=("$UPGRADE_SERVICE" "$CLEANUP_SERVICE" "$SCAN_SERVICE")
+WEEKLY_TIMERS=("$UPGRADE_TIMER" "$CLEANUP_TIMER" "$SCAN_TIMER" "$MONITORING_UPDATE_TIMER")
+WEEKLY_SERVICES=("$UPGRADE_SERVICE" "$CLEANUP_SERVICE" "$SCAN_SERVICE" "$MONITORING_UPDATE_SERVICE")
 
 usage() {
   cat <<EOF
@@ -43,6 +45,7 @@ Weekly timers:
   • $UPGRADE_TIMER — Sun 02:00 (dnf/yum host package upgrade; no auto-reboot by default)
   • $CLEANUP_TIMER — Sun 03:00 (disk/journal/cache cleanup)
   • $SCAN_TIMER — Sun 04:30 (Trivy container/source scan)
+  • $MONITORING_UPDATE_TIMER — Sun 05:30 (Grafana/Loki rebuild when images ≥ 3d old)
 EOF
   exit 1
 }
@@ -57,7 +60,8 @@ require_root() {
 timer_installed() {
   [[ -f "/etc/systemd/system/${UPGRADE_TIMER}" && \
      -f "/etc/systemd/system/${SCAN_TIMER}" && \
-     -f "/etc/systemd/system/${CLEANUP_TIMER}" ]]
+     -f "/etc/systemd/system/${CLEANUP_TIMER}" && \
+     -f "/etc/systemd/system/${MONITORING_UPDATE_TIMER}" ]]
 }
 
 install_upgrade_units() {
@@ -110,6 +114,28 @@ install_cleanup_units() {
   sed -i "s|^Documentation=.*|Documentation=file://${REPO_DIR}/docs/readme.md|" "/etc/systemd/system/${CLEANUP_TIMER}"
 }
 
+install_monitoring_update_units() {
+  local svc="$REPO_DIR/update-monitoring-images-weekly.service"
+  local tmr="$REPO_DIR/update-monitoring-images-weekly.timer"
+  cp "$svc" "/etc/systemd/system/${MONITORING_UPDATE_SERVICE}"
+  cp "$tmr" "/etc/systemd/system/${MONITORING_UPDATE_TIMER}"
+  chmod 644 "/etc/systemd/system/${MONITORING_UPDATE_SERVICE}" "/etc/systemd/system/${MONITORING_UPDATE_TIMER}"
+
+  sed -i "s|^User=.*|User=${MAINT_USER}|" "/etc/systemd/system/${MONITORING_UPDATE_SERVICE}"
+  sed -i "s|^Group=.*|Group=${MAINT_USER}|" "/etc/systemd/system/${MONITORING_UPDATE_SERVICE}"
+  sed -i "s|^WorkingDirectory=.*|WorkingDirectory=${REPO_DIR}|" "/etc/systemd/system/${MONITORING_UPDATE_SERVICE}"
+  sed -i "s|^Environment=INFRA_HOME=.*|Environment=INFRA_HOME=${INFRA_HOME}|" "/etc/systemd/system/${MONITORING_UPDATE_SERVICE}"
+  sed -i "s|^Environment=INFRA_REPO=.*|Environment=INFRA_REPO=${REPO_DIR}|" "/etc/systemd/system/${MONITORING_UPDATE_SERVICE}"
+  infra_systemd_set_env "/etc/systemd/system/${MONITORING_UPDATE_SERVICE}" INFRA_APP_DIR "${INFRA_APP_DIR}"
+  sed -i "s|^Environment=INFRA_USER=.*|Environment=INFRA_USER=${MAINT_USER}|" "/etc/systemd/system/${MONITORING_UPDATE_SERVICE}" 2>/dev/null || \
+    sed -i "/^Environment=INFRA_REPO=/a Environment=INFRA_USER=${MAINT_USER}" "/etc/systemd/system/${MONITORING_UPDATE_SERVICE}"
+  sed -i "s|^Environment=\"XDG_RUNTIME_DIR=.*|Environment=\"XDG_RUNTIME_DIR=/run/user/${USER_UID}\"|" "/etc/systemd/system/${MONITORING_UPDATE_SERVICE}"
+  sed -i "s|^Environment=\"DBUS_SESSION_BUS_ADDRESS=.*|Environment=\"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${USER_UID}/bus\"|" "/etc/systemd/system/${MONITORING_UPDATE_SERVICE}"
+  sed -i "s|^ExecStart=.*|ExecStart=${REPO_DIR}/update-monitoring-images-weekly.sh|" "/etc/systemd/system/${MONITORING_UPDATE_SERVICE}"
+  sed -i "s|^Documentation=.*|Documentation=file://${REPO_DIR}/docs/readme.md|" "/etc/systemd/system/${MONITORING_UPDATE_SERVICE}"
+  sed -i "s|^Documentation=.*|Documentation=file://${REPO_DIR}/docs/readme.md|" "/etc/systemd/system/${MONITORING_UPDATE_TIMER}"
+}
+
 cmd_install() {
   require_root
   echo -e "${BLUE}Installing weekly maintenance timers for ${MAINT_USER}@${REPO_DIR}${NC}"
@@ -119,12 +145,15 @@ cmd_install() {
     "$REPO_DIR/upgrade-host-packages-weekly.sh" \
     "$REPO_DIR/cleanup-disk-space-weekly.sh" \
     "$REPO_DIR/scan-containers-vulnerabilities-weekly.sh" \
+    "$REPO_DIR/update-monitoring-images-weekly.sh" \
     "$REPO_DIR/upgrade-host-packages-weekly.service" \
     "$REPO_DIR/upgrade-host-packages-weekly.timer" \
     "$REPO_DIR/scan-containers-vulnerabilities-weekly.service" \
     "$REPO_DIR/scan-containers-vulnerabilities-weekly.timer" \
     "$REPO_DIR/cleanup-disk-space-weekly.service" \
-    "$REPO_DIR/cleanup-disk-space-weekly.timer"; do
+    "$REPO_DIR/cleanup-disk-space-weekly.timer" \
+    "$REPO_DIR/update-monitoring-images-weekly.service" \
+    "$REPO_DIR/update-monitoring-images-weekly.timer"; do
     if [[ ! -f "$f" ]]; then
       echo -e "${RED}Missing: $f${NC}" >&2
       exit 1
@@ -134,11 +163,13 @@ cmd_install() {
   chmod +x \
     "$REPO_DIR/upgrade-host-packages-weekly.sh" \
     "$REPO_DIR/cleanup-disk-space-weekly.sh" \
-    "$REPO_DIR/scan-containers-vulnerabilities-weekly.sh"
+    "$REPO_DIR/scan-containers-vulnerabilities-weekly.sh" \
+    "$REPO_DIR/update-monitoring-images-weekly.sh"
 
   install_upgrade_units
   install_cleanup_units
   install_scan_units
+  install_monitoring_update_units
   systemctl daemon-reload
   systemctl enable "${WEEKLY_TIMERS[@]}"
   systemctl start "${WEEKLY_TIMERS[@]}"
@@ -194,7 +225,8 @@ cmd_status() {
 
   if [[ -f "/etc/systemd/system/${UPGRADE_TIMER}" || \
         -f "/etc/systemd/system/${CLEANUP_TIMER}" || \
-        -f "/etc/systemd/system/${SCAN_TIMER}" ]]; then
+        -f "/etc/systemd/system/${SCAN_TIMER}" || \
+        -f "/etc/systemd/system/${MONITORING_UPDATE_TIMER}" ]]; then
     systemctl list-timers "${WEEKLY_TIMERS[@]}" --no-pager 2>/dev/null || true
   fi
 

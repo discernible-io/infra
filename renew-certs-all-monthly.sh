@@ -36,12 +36,21 @@ require_root() {
 
 mode_certbot() {
     require_root
+    # Certs are issued with --standalone (see generate-cert-letsencrypt.sh).
+    # Keep httpd stopped so certbot can bind :80; only open the firewall temporarily.
     setup_httpd_cleanup_trap
     ensure_httpd_stopped
 
     echo -e "${BLUE}========== Automated Certificate Renewal ==========${NC}"
 
-    start_httpd_for_certbot
+    open_firewall_http_for_certbot
+
+    if ss -tlnH 2>/dev/null | grep -q ':80 '; then
+        echo -e "${RED}Port 80 is in use. Stop the service using it, then retry.${NC}" >&2
+        ss -tlnp | grep ':80 ' || true
+        exit 1
+    fi
+
     certbot renew --non-interactive --deploy-hook "$SCRIPT_DIR/install-certs-on-renew-hook-helper.sh"
     stop_httpd_after_certbot
     trap - EXIT
