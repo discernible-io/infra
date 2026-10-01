@@ -70,3 +70,9 @@ Shared helpers sourced by other scripts use the **`helper`** suffix. Merged entr
 This project is licensed under the [MIT License](LICENSE).
 
 Archived VPN helpers in `archive/` call the `wg` command-line tool. They do not include [WireGuard](https://www.wireguard.com/) source. WireGuard is a registered trademark of Jason A. Donenfeld. Discernible-IO is not sponsored or endorsed by Jason A. Donenfeld.
+
+<!-- discernible-io:product-links -->
+---
+
+[discernible.io](https://www.discernible.io/) · [Get a Passport](https://purchase.identyclaw.com) · [Verify HOLA](https://verify.identyclaw.com)
+<!-- /discernible-io:product-links -->
