@@ -40,14 +40,18 @@ close_firewall_http_after_certbot() {
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-    if [[ "${FIREWALL_HTTP_OPENED_BY_SCRIPT:-false}" == true ]]; then
-        if iptables -nL INFRA_HOST_FW &>/dev/null 2>&1; then
-            echo -e "${YELLOW}Closing temporary port 80 in iptables host firewall...${NC}"
-            "$script_dir/configure-host-firewall-oneoff.sh" deny-http-temporary temporary
-            echo -e "${GREEN}Closed temporary HTTP via iptables (INFRA_HOST_FW)${NC}"
-        fi
-        FIREWALL_HTTP_OPENED_BY_SCRIPT=false
+    # Always remove the temporary HTTP-01 allow when finishing. deny-http-temporary is
+    # idempotent (clears /var/lib/infra/allow-http-temporary and rebuilds the chain),
+    # so this is safe even if this process did not open port 80 or the flag was lost.
+    if iptables -nL INFRA_HOST_FW &>/dev/null 2>&1; then
+        echo -e "${YELLOW}Closing temporary port 80 in iptables host firewall...${NC}"
+        "$script_dir/configure-host-firewall-oneoff.sh" deny-http-temporary temporary || true
+        echo -e "${GREEN}Closed temporary HTTP via iptables (INFRA_HOST_FW)${NC}"
+    elif [[ "${FIREWALL_HTTP_OPENED_BY_SCRIPT:-false}" == true ]]; then
+        echo -e "${YELLOW}Closing temporary port 80 flag (firewall chain not active)...${NC}"
+        "$script_dir/configure-host-firewall-oneoff.sh" deny-http-temporary temporary || true
     fi
+    FIREWALL_HTTP_OPENED_BY_SCRIPT=false
 
     if [[ "${CERTBOT_PORT80_REDIRECT_CLEARED:-false}" == true ]]; then
         if ! declare -F infra_ensure_port_forward_rules &>/dev/null; then
@@ -55,7 +59,7 @@ close_firewall_http_after_certbot() {
             source "$script_dir/infra-iptables-helper.sh"
         fi
         echo -e "${YELLOW}Restoring NAT REDIRECT rules (including port 80 if configured)...${NC}"
-        infra_ensure_port_forward_rules
+        infra_ensure_port_forward_rules || true
         CERTBOT_PORT80_REDIRECT_CLEARED=false
     fi
 }

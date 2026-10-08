@@ -36,8 +36,11 @@ require_root() {
 
 mode_certbot() {
     require_root
+    local rc=0
+
     # Certs are issued with --standalone (see generate-cert-letsencrypt.sh).
     # Keep httpd stopped so certbot can bind :80; only open the firewall temporarily.
+    # EXIT trap always closes temporary :80 and restores NAT, including on set -e failure.
     setup_httpd_cleanup_trap
     ensure_httpd_stopped
 
@@ -51,11 +54,17 @@ mode_certbot() {
         exit 1
     fi
 
-    certbot renew --non-interactive --deploy-hook "$SCRIPT_DIR/install-certs-on-renew-hook-helper.sh"
+    certbot renew --non-interactive --deploy-hook "$SCRIPT_DIR/install-certs-on-renew-hook-helper.sh" || rc=$?
+
     stop_httpd_after_certbot
     trap - EXIT
 
-    echo -e "${GREEN}✓ Renewal run complete (httpd stopped)${NC}"
+    if [[ "$rc" -eq 0 ]]; then
+        echo -e "${GREEN}✓ Renewal run complete (standalone; port 80 closed)${NC}"
+    else
+        echo -e "${YELLOW}Renewal finished with errors (exit $rc); port 80 closed${NC}" >&2
+    fi
+    return "$rc"
 }
 
 mode_manual() {
