@@ -2,7 +2,13 @@
 
 Host automation for AlmaLinux 10 servers that run rootless [Podman](https://podman.io/) stacks: TLS, firewalls, systemd timers, certificate install, and container liveness.
 
-This git checkout is **scripts only**. Machine config lives in a sibling **`~/infra-app/`** directory (never commit it). Container runtime secrets stay in each **`~/<service>-app/`** tree because Podman loads them with `--env-file`.
+This git checkout is **scripts only**. **All host configuration goes in the sibling directory `../infra-app`** (usually `~/infra-app` when this repo is `~/infra`). Never commit that directory, and do not treat files in this repo as the settings for a machine.
+
+That includes domains, ports, certificate lists, SAN maps, app-to-domain maps, monitor lists, firewall and port-forward choices, maintenance status, and scan output. The loader [infra-env-helper.sh](infra-env-helper.sh) only sources `../infra-app/infra-env-helper.sh`. Editing a markdown file here does not change what this host serves.
+
+[infra-env-helper.md](infra-env-helper.md) and [docs/production-hosts.md](docs/production-hosts.md) are not configuration. The first is a set of bootstrap templates that `./bootstrap-infra-app.sh` can copy into `../infra-app`. The second is a fleet map for operators. Scripts do not read either file at runtime.
+
+Container runtime secrets stay in each **`../<service>-app/`** tree (`secrets/secrets.env`, `env.local`) because Podman loads them with `--env-file`. Those are not host configuration and do not belong in `../infra-app` or in this repo.
 
 ## Quick start (new host)
 
@@ -20,7 +26,7 @@ sudo ./setup-host-oneoff.sh you@example.com
 
 `./bootstrap-infra-app.sh --status` shows the loaded profile. Most other scripts accept `help`.
 
-Named profiles (`example`, plus fleet templates) are listed in [infra-env-helper.md](infra-env-helper.md). Extra tenant apps belong only in `~/infra-app/`.
+Named profiles in [infra-env-helper.md](infra-env-helper.md) are copy-out templates only. After bootstrap, the profile that scripts load is `../infra-app/infra-env-helper.sh`.
 
 ## Layout
 
@@ -138,7 +144,8 @@ Most scripts accept `help`. Longer notes and the host software baseline live in 
 | [docs/rpc-configuration.md](docs/rpc-configuration.md) | NEAR RPC for `idcp-wallet.sh` |
 | [docs/maintenance-status-roadmap.md](docs/maintenance-status-roadmap.md) | Intended run cadence |
 | [docs/maintenance-status.example.md](docs/maintenance-status.example.md) | Per-host status template (copy to `~/infra-app/`) |
-| [docs/production-hosts.md](docs/production-hosts.md) | Reference fleet domain and port map |
+| [infra-env-helper.md](infra-env-helper.md) | Bootstrap templates only; live profile is `../infra-app/infra-env-helper.sh` |
+| [docs/production-hosts.md](docs/production-hosts.md) | Fleet map for operators; not read by scripts |
 | [docs/migrate-infra-app.md](docs/migrate-infra-app.md) | Move host config into `~/infra-app/` |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to send changes |
 | [SECURITY.md](SECURITY.md) | Vulnerability reports and what not to commit |

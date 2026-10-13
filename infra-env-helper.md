@@ -382,7 +382,6 @@ INFRA_CERT_DOMAINS=(
   "api.dihola.io"
   "root.dihola.io"
   "identyclaw.dihola.io"
-  "slc.dihola.io"
   "api.lastcradle.io"
   "$INFRA_MONITORING_DOMAIN"
 )

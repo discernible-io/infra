@@ -91,18 +91,11 @@ dedalo43 still documents nginx on **9443** in its host profile; dedalo47 uses **
 | icarus39 | grafana47.dihola.io       | dedalo47 |
 | —        | grafana46.discernible.io  | **dedalo46** |
 
-## servertest / SLC (synthetic last cradle, port 9443)
-
-| Edge     | Domain        | Alma host |
-|----------|---------------|-----------|
-| icarus40 | slc.dihola.io | dedalo47 |
-
-Related hostnames that remain in configs and docs (do **not** rename):
-`slc.discernible.io`, `slc.discernible.io:8443`, `slcapi.discernible.io`, `slcapi.discernible.io:9443`.
-
-On **dedalo47**, production SLC is also **slcbackend** (`~/slcbackend-app` / `api.lastcradle.io:13443`); there is no `~/syntheticlc-app`. Keep existing domain names as published; do not bulk-rewrite them to other hosts.
-
 ## slcbackend / SLC production (api.lastcradle.io, port 13443 + 443 redirect)
+
+`slc.dihola.io` is not registered on **dedalo47**. Related hostnames that remain in configs and docs (do **not** rename):
+`slc.discernible.io`, `slc.discernible.io:8443`, `slcapi.discernible.io`, `slcapi.discernible.io:9443`.
+There is no `~/syntheticlc-app` on this host.
 
 | Edge | Domain              | Alma host    |
 |------|---------------------|--------------|
