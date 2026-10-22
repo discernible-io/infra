@@ -1,0 +1,4 @@
+title = "infra gitleaks config"
+
+[extend]
+useDefault = true
