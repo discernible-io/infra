@@ -18,6 +18,15 @@
 #   11. Podman build cache including Buildah cache mounts
 #   12. Old Trivy scan artifacts under ~/infra-app/trivy-scan-results/
 #   13. Project logs and Cargo target/ dirs under INFRA_HOME
+#   14. Hermes agent memory backups (~/*-memory-backups)
+#
+# Hermes memory backups (sibling of ~/hermes-agents-app, not inside it):
+#   HERMES_MEMORY_BACKUP_KEEP=30                 (newest snapshots to keep)
+#   HERMES_MEMORY_BACKUP_RETENTION_DAYS=90       (drop older snapshots)
+#   HERMES_MEMORY_BACKUP_MAX_BYTES=67108864      (64 MiB hard ceiling)
+#   HERMES_MEMORY_BACKUP_DIR                     (optional single directory)
+#   Always keeps the newest snapshot and the LATEST target, even if that
+#   pair is over the byte cap. Same knobs as hermes-agents deploy/scripts/lib.sh.
 #
 # Under sudo, $HOME is /root. User-space reclaim MUST use INFRA_HOME or it
 # skips the host Cargo trees that actually fill the disk (e.g. ~/ironclaw-idc/target
@@ -445,6 +454,168 @@ clean_codeql_run_dirs() {
   echo ""
 }
 
+# Cap Hermes memory snapshots so ~/hermes-agents-app-memory-backups cannot grow
+# without a bound. Always keeps the newest snapshot and the LATEST target.
+clean_hermes_memory_backups() {
+  local keep="${HERMES_MEMORY_BACKUP_KEEP:-30}"
+  local retention_days="${HERMES_MEMORY_BACKUP_RETENTION_DAYS:-90}"
+  local max_bytes="${HERMES_MEMORY_BACKUP_MAX_BYTES:-67108864}"
+  local home
+  home="$(infra_user_home)"
+
+  [[ "$keep" =~ ^[0-9]+$ ]] || keep=30
+  [[ "$retention_days" =~ ^[0-9]+$ ]] || retention_days=90
+  [[ "$max_bytes" =~ ^[0-9]+$ ]] || max_bytes=67108864
+  (( keep < 1 )) && keep=1
+
+  local -a roots=()
+  if [[ -n "${HERMES_MEMORY_BACKUP_DIR:-}" && -d "${HERMES_MEMORY_BACKUP_DIR}" ]]; then
+    roots+=("$HERMES_MEMORY_BACKUP_DIR")
+  else
+    local candidate
+    shopt -s nullglob
+    for candidate in "$home"/*-memory-backups; do
+      [[ -d "$candidate" ]] && roots+=("$candidate")
+    done
+    shopt -u nullglob
+  fi
+
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  if [[ ${#roots[@]} -eq 0 ]]; then
+    echo "ℹ️  No Hermes memory backups (*-memory-backups) under ${home}, skipping..."
+    echo ""
+    return 0
+  fi
+
+  local root
+  for root in "${roots[@]}"; do
+    echo "📋 Hermes memory backups before cleanup:"
+    du_sh "$root"
+    echo "  Directory: ${root}"
+    echo "  Caps: newest ${keep}, older than ${retention_days}d, max $(numfmt --to=iec-i --suffix=B "$max_bytes" 2>/dev/null || echo "${max_bytes} bytes")"
+
+    find "$root" -mindepth 1 -maxdepth 1 -type d -name '.staging-*' -mmin +60 \
+      -exec rm -rf {} + 2>/dev/null || true
+
+    local -a snaps=()
+    local s
+    while IFS= read -r s; do
+      [[ -n "$s" ]] || continue
+      snaps+=("$s")
+    done < <(
+      find "$root" -mindepth 1 -maxdepth 1 -type d \
+        -regextype posix-extended \
+        -regex '.*/[0-9]{8}T[0-9]+Z(-[0-9]+)?$' 2>/dev/null | sort
+    )
+    if [[ ${#snaps[@]} -eq 0 ]]; then
+      echo "  (no snapshots)"
+      echo ""
+      continue
+    fi
+
+    local newest latest=""
+    newest="${snaps[${#snaps[@]}-1]}"
+    if [[ -L "$root/LATEST" || -e "$root/LATEST" ]]; then
+      latest="$(readlink -f "$root/LATEST" 2>/dev/null || true)"
+    fi
+
+    local removed=0
+    local -a kept=()
+    for s in "${snaps[@]}"; do
+      if [[ "$s" == "$newest" || ( -n "$latest" && "$s" == "$latest" ) ]]; then
+        kept+=("$s")
+        continue
+      fi
+      if [[ -n "$(find "$s" -maxdepth 0 -mtime "+${retention_days}" -print -quit 2>/dev/null || true)" ]]; then
+        local old_size
+        old_size="$(du -sh "$s" 2>/dev/null | cut -f1 || echo '?')"
+        echo "  Removing old snapshot (${retention_days}d+, ${old_size}): $(basename "$s")"
+        rm -rf "$s"
+        rm -f "${s}.sha256"
+        removed=$((removed + 1))
+        continue
+      fi
+      kept+=("$s")
+    done
+    snaps=("${kept[@]}")
+
+    while [[ ${#snaps[@]} -gt $keep ]]; do
+      local victim="" i
+      for (( i=0; i<${#snaps[@]}; i++ )); do
+        if [[ "${snaps[$i]}" != "$newest" && "${snaps[$i]}" != "$latest" ]]; then
+          victim="${snaps[$i]}"
+          unset 'snaps[i]'
+          snaps=("${snaps[@]}")
+          break
+        fi
+      done
+      [[ -n "$victim" ]] || break
+      local victim_size
+      victim_size="$(du -sh "$victim" 2>/dev/null | cut -f1 || echo '?')"
+      echo "  Removing excess snapshot (${victim_size}): $(basename "$victim")"
+      rm -rf "$victim"
+      rm -f "${victim}.sha256"
+      removed=$((removed + 1))
+    done
+
+    while [[ ${#snaps[@]} -gt 1 ]]; do
+      local total=0
+      for s in "${snaps[@]}"; do
+        local one
+        one="$(du -sb "$s" 2>/dev/null | awk '{print $1}')"
+        [[ "$one" =~ ^[0-9]+$ ]] || one=0
+        if [[ -f "${s}.sha256" ]]; then
+          local sha_bytes
+          sha_bytes="$(stat -c '%s' "${s}.sha256" 2>/dev/null || echo 0)"
+          [[ "$sha_bytes" =~ ^[0-9]+$ ]] || sha_bytes=0
+          one=$((one + sha_bytes))
+        fi
+        total=$((total + one))
+      done
+      [[ "$total" -le "$max_bytes" ]] && break
+      victim=""
+      for (( i=0; i<${#snaps[@]}; i++ )); do
+        if [[ "${snaps[$i]}" != "$newest" && "${snaps[$i]}" != "$latest" ]]; then
+          victim="${snaps[$i]}"
+          unset 'snaps[i]'
+          snaps=("${snaps[@]}")
+          break
+        fi
+      done
+      [[ -n "$victim" ]] || break
+      victim_size="$(du -sh "$victim" 2>/dev/null | cut -f1 || echo '?')"
+      echo "  Removing snapshot over ${max_bytes} byte cap (${victim_size}): $(basename "$victim")"
+      rm -rf "$victim"
+      rm -f "${victim}.sha256"
+      removed=$((removed + 1))
+    done
+
+    local sha_file
+    while IFS= read -r sha_file; do
+      [[ -n "$sha_file" ]] || continue
+      if [[ ! -d "${sha_file%.sha256}" ]]; then
+        rm -f "$sha_file"
+      fi
+    done < <(find "$root" -mindepth 1 -maxdepth 1 -type f -name '*.sha256' ! -name 'LATEST.sha256' 2>/dev/null || true)
+
+    echo "  Removed ${removed} snapshot(s); ${#snaps[@]} remaining"
+    if [[ ${#snaps[@]} -gt 0 ]]; then
+      total=0
+      for s in "${snaps[@]}"; do
+        one="$(du -sb "$s" 2>/dev/null | awk '{print $1}')"
+        [[ "$one" =~ ^[0-9]+$ ]] || one=0
+        total=$((total + one))
+      done
+      if [[ "$total" -gt "$max_bytes" ]]; then
+        echo "  Newest/LATEST still above the cap ($(numfmt --to=iec-i --suffix=B "$total" 2>/dev/null || echo "$total")); left in place"
+      fi
+    fi
+    echo "📋 Hermes memory backups after cleanup:"
+    du_sh "$root"
+    echo ""
+  done
+}
+
 # Error handler
 trap 'echo -e "${RED}❌ Script failed at line $LINENO${NC}"; exit 1' ERR
 
@@ -829,6 +1000,8 @@ else
   echo ""
 fi
 
+clean_hermes_memory_backups
+
 # Clean project-specific directories under INFRA_HOME (not root's $HOME)
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📋 Project directories cleanup (${INFRA_USER} home):"
@@ -904,6 +1077,7 @@ echo "  • Podman unused images, --mount=type=cache trees, and stopped containe
 echo "  • Trivy scan artifacts older than ${TRIVY_RESULTS_RETENTION_DAYS:-28} days removed"
 echo "  • Project log files truncated (files >100M)"
 echo "  • CodeQL run dirs pruned (>${CODEQL_RUNS_RETENTION_DAYS:-7}d old; keep ${CODEQL_RUNS_KEEP_NEWEST:-3} newest per project)"
+echo "  • Hermes memory backups capped (newest ${HERMES_MEMORY_BACKUP_KEEP:-30}, >${HERMES_MEMORY_BACKUP_RETENTION_DAYS:-90}d, max ${HERMES_MEMORY_BACKUP_MAX_BYTES:-67108864} bytes)"
 echo "  • Cargo target/ directories removed under ${INFRA_HOME}"
 echo "  • node_modules cleanup available (uncomment in script)"
 echo ""
@@ -913,5 +1087,6 @@ echo "💡 Override Cursor sandbox retention: CURSOR_SANDBOX_CACHE_RETENTION_DAY
 echo "💡 Override Cursor server/agent keep: CURSOR_SERVER_BIN_KEEP_NEWEST=1 CURSOR_AGENT_VERSIONS_KEEP_NEWEST=1 sudo $0"
 echo "💡 Override Bun /tmp leak retention: BUN_TMP_NATIVE_RETENTION_MINUTES=30 BUN_TMP_NATIVE_KEEP_NEWEST=10 sudo $0"
 echo "💡 Override CodeQL run retention: CODEQL_RUNS_RETENTION_DAYS=14 CODEQL_RUNS_KEEP_NEWEST=5 sudo $0"
+echo "💡 Override Hermes memory backup cap: HERMES_MEMORY_BACKUP_KEEP=30 HERMES_MEMORY_BACKUP_RETENTION_DAYS=90 HERMES_MEMORY_BACKUP_MAX_BYTES=67108864 sudo $0"
 echo "💡 User-space only (no sudo): $0 --user-space"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

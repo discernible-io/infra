@@ -120,7 +120,7 @@ Scripts that used to be separate entry points are merged with a **subcommand** a
 - **`upgrade-host-packages-weekly.{service,timer}`** — Units installed by `manage-weekly-maintenance.sh install`
 - **`update-monitoring-images-weekly.sh`** — Weekly Grafana/Loki rebuild/redeploy when images ≥ 3 days old (Sun 05:30); `--check` / `--force`
 - **`update-monitoring-images-weekly.{service,timer}`** — Units installed by `manage-weekly-maintenance.sh install`
-- **`cleanup-disk-space-weekly.sh`** — Clean journal logs, syslog, and Podman cache (Sun 03:00 timer)
+- **`cleanup-disk-space-weekly.sh`** — Clean journal logs, syslog, Podman cache, and Hermes memory backups (Sun 03:00 timer)
 - **`host-uptime-prep.sh`** — Hourly host health signals (`init`, `enable-permanent`, `status`, `report`)
 - **`enable-rootless-podman-helper.sh`** — Linger + `podman.socket` for rootless Podman
 - **`enable-podman-boot-autostart.sh`** — Podman autostart on reboot for `INFRA_USER`
