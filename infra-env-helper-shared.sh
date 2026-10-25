@@ -46,6 +46,10 @@ infra_ensure_array INFRA_ADMIN_TCP_PORTS
 infra_ensure_array INFRA_MONITORING_ALLOW_CIDRS
 infra_ensure_array INFRA_BLOCKED_PUBLIC_TCP_PORTS
 infra_ensure_array INFRA_EXTRA_PORT_FORWARDS
+# Host-published ports reachable only from rootless pasta / link-local (e.g. Postgres
+# via host.containers.internal). Not opened to the public Internet.
+infra_ensure_array INFRA_LOCAL_ONLY_TCP_PORTS
+infra_ensure_array INFRA_LOCAL_ONLY_ALLOW_CIDRS
 infra_ensure_assoc_array INFRA_POD_START
 infra_ensure_assoc_array INFRA_POD_START_ENV
 
@@ -81,6 +85,15 @@ infra_monitoring_allow_cidrs() {
   host_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
   if [[ -n "$host_ip" ]]; then
     cidrs+=("${host_ip}/32")
+  fi
+  printf '%s\n' "${cidrs[@]}"
+}
+
+# CIDRs allowed to reach INFRA_LOCAL_ONLY_TCP_PORTS (pasta link-local by default).
+infra_local_only_allow_cidrs() {
+  local -a cidrs=("${INFRA_LOCAL_ONLY_ALLOW_CIDRS[@]}")
+  if [[ ${#cidrs[@]} -eq 0 ]]; then
+    cidrs=(169.254.0.0/16)
   fi
   printf '%s\n' "${cidrs[@]}"
 }

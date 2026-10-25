@@ -41,6 +41,7 @@ Actions:
 
 Public TCP:   ${INFRA_PUBLIC_TCP_PORTS[*]}
 Admin TCP:    ${INFRA_ADMIN_TCP_PORTS[*]}
+Local-only TCP: ${INFRA_LOCAL_ONLY_TCP_PORTS[*]:-(none)} (from ${INFRA_LOCAL_ONLY_ALLOW_CIDRS[*]:-169.254.0.0/16})
 443 redirect: ${INFRA_PORT_FORWARD_DEST:-?} (${INFRA_PORT_FORWARD_SERVICE:-unset})
 Extra REDIRECTs: ${INFRA_EXTRA_PORT_FORWARDS[*]:-(none)}
 Blocked TCP:  ${INFRA_BLOCKED_PUBLIC_TCP_PORTS[*]}
@@ -103,6 +104,22 @@ infra_add_monitoring_cidr_rules() {
     for cidr in "${cidrs[@]}"; do
       [[ -n "$cidr" ]] || continue
       # iptables is IPv4-only; skip IPv6 CIDRs (e.g. ::1/128).
+      [[ "$cidr" == *:* ]] && continue
+      iptables -A "$CHAIN_NAME" -p tcp --dport "$port" -s "$cidr" \
+        -m conntrack --ctstate NEW -j ACCEPT
+    done
+  done
+}
+
+# Allow host-published ports (e.g. Postgres) only from pasta/link-local clients.
+infra_add_local_only_port_rules() {
+  local port cidr
+  local -a cidrs=()
+  mapfile -t cidrs < <(infra_local_only_allow_cidrs)
+  for port in "${INFRA_LOCAL_ONLY_TCP_PORTS[@]}"; do
+    [[ -n "$port" ]] || continue
+    for cidr in "${cidrs[@]}"; do
+      [[ -n "$cidr" ]] || continue
       [[ "$cidr" == *:* ]] && continue
       iptables -A "$CHAIN_NAME" -p tcp --dport "$port" -s "$cidr" \
         -m conntrack --ctstate NEW -j ACCEPT
@@ -200,6 +217,8 @@ add_firewall_rules() {
     infra_add_monitoring_cidr_rules
   fi
 
+  infra_add_local_only_port_rules
+
   infra_add_blocked_api_port_rules
 
   # Drop other new inbound TCP (public surface = allowed list only).
@@ -210,6 +229,9 @@ add_firewall_rules() {
   echo "  Allowed inbound TCP: ${allowed[*]}"
   if infra_monitoring_restrict_enabled; then
     echo "  Monitoring ports (${INFRA_MONITORING_TCP_PORTS[*]}) restricted to allowlisted CIDRs"
+  fi
+  if [[ ${#INFRA_LOCAL_ONLY_TCP_PORTS[@]} -gt 0 ]]; then
+    echo "  Local-only TCP:      ${INFRA_LOCAL_ONLY_TCP_PORTS[*]} (from $(infra_local_only_allow_cidrs | paste -sd, -))"
   fi
   echo "  443 REDIRECT target: ${INFRA_PORT_FORWARD_DEST:-?} (${INFRA_PORT_FORWARD_SERVICE:-unset})"
   if [[ ${#INFRA_EXTRA_PORT_FORWARDS[@]} -gt 0 ]]; then
@@ -223,6 +245,7 @@ cmd_status() {
   echo "===================="
   echo "Public TCP:   ${INFRA_PUBLIC_TCP_PORTS[*]}"
   echo "Admin TCP:    ${INFRA_ADMIN_TCP_PORTS[*]}"
+  echo "Local-only TCP: ${INFRA_LOCAL_ONLY_TCP_PORTS[*]:-(none)} (from ${INFRA_LOCAL_ONLY_ALLOW_CIDRS[*]:-169.254.0.0/16})"
   echo "443 redirect: ${INFRA_PORT_FORWARD_DEST:-?} (${INFRA_PORT_FORWARD_SERVICE:-unset})"
   if [[ ${#INFRA_EXTRA_PORT_FORWARDS[@]} -gt 0 ]]; then
     echo "Extra REDIRECTs: ${INFRA_EXTRA_PORT_FORWARDS[*]}"
