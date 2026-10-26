@@ -22,7 +22,6 @@ Certificate, HTTP, and firewall workflows also need the packages listed under **
 | [maintenance-status-roadmap.md](./maintenance-status-roadmap.md) | Maintenance planning (shared scripts; host state in `~/infra-app/maintenance-status.md`) |
 | [maintenance-status.example.md](./maintenance-status.example.md) | Per-host installed automation template (copy to `~/infra-app/`) |
 | [production-hosts.md](./production-hosts.md) | Reference fleet domain and port map |
-| [codecome-usage.md](./codecome-usage.md) | CodeCome security-review workflow (clone, phases, cleanup) |
 
 ## Standard development host software
 
