@@ -49,7 +49,8 @@ Baseline packages on an AlmaLinux 10 development host (representative `dnf` name
 - `btop`, `mc`, `ncdu`, `jq`, `bind-utils`
 
 ### Node (OS packages)
-- `nodejs`, `nodejs-npm`
+- NodeSource `nodejs` **22.23.4** (matches `docs` cicd/coding pin; Node 20 has no CVE-2026-111497 fix)
+- Migrate an existing Node 20 host: `~/infra/migrate-host-nodejs-22-oneoff.sh` (interactive sudo)
 
 ### Python (OS packages)
 - `python3` plus assorted `python3-*` libraries (e.g. for Certbot, DNF, firewalld, and other system tools)
