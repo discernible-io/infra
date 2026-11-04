@@ -74,6 +74,7 @@ Prefer **`manage-weekly-maintenance.sh`** (`install` | `enable` | `disable` | `s
 | `verify-cert-mount-permissions.sh` | Validates Podman/nginx cert mount permissions when changing layout. |
 | `configure-fail2ban-api-scan-jail-oneoff.sh` | Optional fail2ban jail for API scan patterns (`install` / `remove`). |
 | `configure-mc-nano-oneoff.sh`, `configure-mc-nano-editor-oneoff.sh` | MC F4 → nano editor setup. |
+| `manage-mail-sender.sh` | Optional SMTP send via Himalaya (`install`, `status`, `send [--account NAME]`). Credentials in `~/infra-app/mail/`, not in git. Does not wire host-uptime or fail2ban. |
 | `idcp-wallet.sh` | RODiT / NEAR wallet workflows (not generic host maintenance). |
 
 ### Installed automation on this host

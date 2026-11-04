@@ -249,6 +249,8 @@ Sibling of the \`infra\` git checkout. **Do not commit** this directory.
 | \`roditwallet.env\` | Optional NEAR RPC overrides for \`idcp-wallet.sh\` |
 | \`maintenance-status.md\` | Installed timers, firewall snapshot, hardening on **this** machine |
 | \`trivy-scan-results/\` | Weekly Trivy reports / SBOM (script output) |
+| \`mail/smtp.env\` | SMTP accounts for \`manage-mail-sender.sh\` (server, account emails) |
+| \`mail/smtp-password.<account>\` | SMTP password per account (legacy \`smtp-password\` for the default) |
 
 Shared scripts stay in the \`infra\` checkout. Per-service runtime secrets stay
 in each \`~/<service>-app/secrets/\` (or \`env.local\` / \`.env\`) because

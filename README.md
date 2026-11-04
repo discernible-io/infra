@@ -134,6 +134,7 @@ Most scripts accept `help`. Longer notes and the host software baseline live in 
 | `signing-*.hcl` / `podman-policy.hcl` | Vault policy snippets used with the vault scripts |
 | `configure-mc-nano-oneoff.sh` | Point Midnight Commander F4 at nano |
 | `configure-mc-nano-editor-oneoff.sh` | Same MC/nano setup for a given username |
+| `manage-mail-sender.sh` | `install` (sudo) \| `status` \| `send [--account NAME]` — Himalaya SMTP sender; accounts in `~/infra-app/mail/` |
 
 ## Documentation
 

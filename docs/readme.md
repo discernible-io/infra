@@ -127,6 +127,7 @@ Scripts that used to be separate entry points are merged with a **subcommand** a
 - **`configure-port-forwarding-oneoff.sh`** — iptables 443→`INFRA_PORT_FORWARD_DEST` REDIRECT (service name or port)
 - **`configure-host-firewall-oneoff.sh`** — inbound TCP allowlist from `~/infra-app/infra-env-helper.sh`
 - **`setup-host-oneoff.sh`** — One-shot bootstrap: rootless Podman, weekly timers, pod monitor, app dirs, TLS, firewall, optional 443 redirect
+- **`manage-mail-sender.sh`** — Himalaya SMTP sender: `sudo ./manage-mail-sender.sh install`, then `status` or `send --to ADDR --subject TEXT [--body TEXT] [--account NAME]`. Add `--html` or `--html-file FILE` to send HTML with local images embedded. Accounts live in `~/infra-app/mail/smtp.env` with passwords in `smtp-password.<account>` (see [mail-sender.env.example](mail-sender.env.example)). It does not hook host-uptime or fail2ban.
 
 ## RODiT wallet usage
 
