@@ -9,6 +9,7 @@
 #   ./manage-mail-sender.sh status
 #   ./manage-mail-sender.sh send --to ADDR --subject TEXT [--body TEXT] [--account NAME]
 #   ./manage-mail-sender.sh send --to ADDR --subject TEXT --html --html-file FILE [--account NAME]
+#   ./manage-mail-sender.sh send ... [--cc ADDR] [--bcc ADDR]
 #   ./manage-mail-sender.sh help
 
 set -euo pipefail
@@ -56,6 +57,7 @@ Usage: sudo $0 install
        $0 status
        $0 send --to ADDR --subject TEXT [--body TEXT] [--account NAME]
        $0 send --to ADDR --subject TEXT --html [--body HTML | --html-file FILE] [--account NAME]
+       $0 send ... [--cc ADDR] [--bcc ADDR]
        $0 help
 
 install   Download Himalaya ${HIMALAYA_VERSION} to ${HIMALAYA_BIN} and create
@@ -64,7 +66,7 @@ status    Show the binary, accounts, and password files. Runs account check for
           every complete account.
 send      Send one message as --account NAME (default from SMTP_DEFAULT).
           Body is --body, or stdin when stdin is not a tty.
-          Repeat --to for more than one recipient.
+          Repeat --to, --cc, or --bcc for more than one address.
           --html sends that body as HTML, with a plain-text alternative.
           Local <img> files are embedded. Remote image URLs are left as-is.
           --html-file reads the HTML from a file and resolves images next to it.
@@ -559,6 +561,8 @@ subject = os.environ["HTML_SUBJECT"]
 from_addr = os.environ["HTML_FROM"]
 from_name = os.environ.get("HTML_FROM_NAME") or ""
 recipients = [line for line in os.environ["HTML_TO"].splitlines() if line.strip()]
+cc_addrs = [line for line in os.environ.get("HTML_CC", "").splitlines() if line.strip()]
+bcc_addrs = [line for line in os.environ.get("HTML_BCC", "").splitlines() if line.strip()]
 out = Path(os.environ["HTML_OUT"])
 
 plain = re.sub(r"(?is)<(script|style)\b[^>]*>.*?</\1>", " ", html_text)
@@ -619,6 +623,10 @@ html_out = re.sub(r'(<img\b[^>]*\bsrc=")([^"]+)(")', repl, html_text, flags=re.I
 root = MIMEMultipart("alternative", policy=SMTP)
 root["From"] = formataddr((from_name, from_addr)) if from_name else from_addr
 root["To"] = ", ".join(recipients)
+if cc_addrs:
+    root["Cc"] = ", ".join(cc_addrs)
+if bcc_addrs:
+    root["Bcc"] = ", ".join(bcc_addrs)
 root["Subject"] = subject
 root["Date"] = formatdate(localtime=True)
 root.attach(MIMEText(plain or "HTML message", "plain", "utf-8"))
@@ -639,13 +647,23 @@ PY
 }
 
 cmd_send() {
-  local -a recipients=()
+  local -a recipients=() cc_addrs=() bcc_addrs=()
   local subject="" body="" body_set=0 html=0 html_file="" html_base="" account_want=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --to)
         [[ $# -ge 2 ]] || die "--to needs an address"
         recipients+=("$2")
+        shift 2
+        ;;
+      --cc)
+        [[ $# -ge 2 ]] || die "--cc needs an address"
+        cc_addrs+=("$2")
+        shift 2
+        ;;
+      --bcc)
+        [[ $# -ge 2 ]] || die "--bcc needs an address"
+        bcc_addrs+=("$2")
         shift 2
         ;;
       --subject)
@@ -731,6 +749,8 @@ cmd_send() {
       HTML_FROM="${SMTP_EMAIL[$account]}" \
       HTML_FROM_NAME="${SMTP_FROM_NAME[$account]:-}" \
       HTML_TO="$(printf '%s\n' "${recipients[@]}")" \
+      HTML_CC="$(printf '%s\n' "${cc_addrs[@]}")" \
+      HTML_BCC="$(printf '%s\n' "${bcc_addrs[@]}")" \
       write_html_message "$eml"
     )" || { rm -f "$eml"; die "could not build the HTML message"; }
     log "Embedded ${images} image(s)"
@@ -744,6 +764,12 @@ cmd_send() {
   local addr
   for addr in "${recipients[@]}"; do
     args+=(--to "$addr")
+  done
+  for addr in "${cc_addrs[@]}"; do
+    args+=(--cc "$addr")
+  done
+  for addr in "${bcc_addrs[@]}"; do
+    args+=(--bcc "$addr")
   done
   "$bin" -c "$CONFIG_FILE" "${args[@]}"
 }
