@@ -23,9 +23,12 @@ NGINX_UID=101
 NGINX_GID=101
 
 restart_nginx_for_app() {
-    local app_dir="$1" app_name service nginx
+    local app_dir="$1" app_name service nginx=""
     app_name="$(basename "$app_dir")"
-    if [[ "$app_name" == "grafanaloki-app" ]]; then
+    # Host override from ~/infra-app (INFRA_APP_NGINX[app_dir]=container).
+    if [[ -n "${INFRA_APP_NGINX[$app_dir]:-}" ]]; then
+        nginx="${INFRA_APP_NGINX[$app_dir]}"
+    elif [[ "$app_name" == "grafanaloki-app" ]]; then
         nginx="monitoring-nginx"
     elif [[ "$app_name" == "openclaw-agents-app" ]]; then
         nginx="openclaw-nginx"

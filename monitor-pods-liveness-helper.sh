@@ -152,9 +152,14 @@ expected_stack_names() {
     if [[ "$base" != "$service_name" ]]; then
         printf '%s\n' "${base}-nginx"
     fi
-    # Common OpenClaw agent names on this fleet (same pod as openclaw-nginx).
+    # Common OpenClaw agent names (hosts still on openclaw-nginx).
     if [[ "$service_name" == openclaw-agents || "$container_name" == openclaw-nginx ]]; then
         printf '%s\n' openclaw-agent-a openclaw-agent-c openclaw-agent-e
+    fi
+    # Host extras from ~/infra-app: INFRA_MONITOR_STACK_EXTRA[service]="c1 c2 …"
+    if [[ -n "${INFRA_MONITOR_STACK_EXTRA[$service_name]:-}" ]]; then
+        # shellcheck disable=SC2086
+        printf '%s\n' ${INFRA_MONITOR_STACK_EXTRA[$service_name]}
     fi
     if [[ -n "$port" ]]; then
         infra="$(infra_find_infra_container "$port" 2>/dev/null || true)"

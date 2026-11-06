@@ -28,7 +28,7 @@ Defaults (set in `infra-env-helper-shared.sh`): `INFRA_OUTPUT_DIR=$INFRA_APP_DIR
 `./bootstrap-infra-app.sh` creates the output dir (and may migrate any legacy
 `~/infra/trivy-scan-results/*` artifacts into `~/infra-app/`).
 
-Optional pod start map for `start-pod.sh` / liveness (host profile):
+Optional host maps (set in `~/infra-app/infra-env-helper.sh` only):
 
 ```bash
 declare -A INFRA_POD_START=(
@@ -39,6 +39,17 @@ declare -A INFRA_POD_START_ENV=(
 )
 # INFRA_MONITOR_SERVICES entry:
 #   "myservice:my-container:${INFRA_REPO}/start-pod.sh:8443"
+
+# Cert install restart target when app dir ≠ default <name>-nginx heuristic
+# (e.g. Hermes profile home under hermes-agents-app/homes/<id>).
+declare -A INFRA_APP_NGINX=(
+  ["${INFRA_HOME}/hermes-agents-app/homes/cornelius"]="hermes-cornelius-nginx"
+)
+
+# Extra containers for liveness / stack restart beyond name conventions.
+declare -A INFRA_MONITOR_STACK_EXTRA=(
+  [cornelius]="hermes-cornelius hermes-cornelius-auth hermes-cornelius-nginx"
+)
 ```
 
 **Source of truth for inventories:** host profiles below and
@@ -510,8 +521,8 @@ source "${INFRA_REPO}/infra-env-helper-shared.sh"
 ## dedalo43 — dihola stack + agents + SLC frontend
 
 Serves **dihola.io** signing/purchase/webhook stacks,
-OpenClaw/Hermes agent ingress, ironclaw, and the main-tier SLC frontend
-(`lastcradle.io` / `slc.dihola.io`).
+Hermes agent ingress (Cornelius + Lemuel), ironclaw, and the main-tier SLC frontend
+(`lastcradle.io` / `slc.dihola.io`). Live values: `~/infra-app/` on dedalo43.
 
 | Service            | Port | Domain (typical)           |
 |--------------------|------|----------------------------|
@@ -521,12 +532,12 @@ OpenClaw/Hermes agent ingress, ironclaw, and the main-tier SLC frontend
 | mintclient         | 4443 | verify.dihola.io (SAN on purchase cert) |
 | ironclaw           | 9443 | ironclaw.dihola.io; **88 → 9443** |
 | slcfrontend (SLC)  | 13443 | lastcradle.io (+ www / identyclaw.com SAN); **443 → 13443** |
-| openclaw-agents    | 8443 | cornelius.dihola.io (+ SANs john/jay) |
-| hermes-agent       | 10443 | hermes.dihola.io; **80 → 10443** (Telegram); **7443 → 10443** (Passport A2A → nginx → pod `:9900`) |
+| cornelius (Hermes) | 8443 | cornelius.dihola.io (+ SANs john/jay); was OpenClaw |
+| hermes-agent (Lemuel) | 10443 | hermes.dihola.io; **80 → 10443** (Telegram); **7443 → 10443** (Passport A2A → nginx → pod `:9900`) |
 | monitoring         | 3100/3333 | grafana43.dihola.io     |
 
 Also allowed: **22** (SSH). Certbot HTTP-01 still uses a temporary allow on **80** when needed.
-OpenClaw + Hermes nginx certs are Let's Encrypt via `INFRA_APP_DOMAINS` (Telegram rejects self-signed).
+Hermes nginx certs (Cornelius + Lemuel) are Let's Encrypt via `INFRA_APP_DOMAINS` (Telegram rejects self-signed).
 
 ```bash
 sudo ./configure-host-firewall-oneoff.sh enable permanent
@@ -566,9 +577,7 @@ declare -gA INFRA_CERT_SAN_DOMAINS=(
   # Primary LE name for main-tier SLC frontend; www + IdentyClaw apex share the same cert
   # (identyclaw.com redirect is served by slcfrontend on 443→13443).
   ["lastcradle.io"]="www.lastcradle.io identyclaw.com"
-  # OpenClaw agents share a single nginx cert file (fullchain.pem/privkey.pem)
-  # under openclaw-agents-app/certs. Include all configured agent ingress
-  # hostnames as SANs.
+  # Hermes Cornelius profile cert SANs (homes/cornelius/certs).
   ["cornelius.dihola.io"]="john.dihola.io jay.dihola.io"
 )
 
@@ -582,8 +591,8 @@ declare -gA INFRA_APP_DOMAINS=(
   # Primary LE name lastcradle.io (+ SAN www.lastcradle.io, identyclaw.com).
   ["${INFRA_HOME}/slcfrontend-app"]="lastcradle.io"
   ["${INFRA_HOME}/grafanaloki-app"]="$INFRA_MONITORING_DOMAIN"
-  # openclaw-agents-app uses a CA-signed nginx cert so Telegram webhooks work.
-  ["${INFRA_HOME}/openclaw-agents-app"]="cornelius.dihola.io"
+  # Cornelius cut over OpenClaw → Hermes profile home.
+  ["${INFRA_HOME}/hermes-agents-app/homes/cornelius"]="cornelius.dihola.io"
   # hermes-agents-app — CA-signed cert for Telegram webhook ingress on :10443 (80→10443).
   ["${INFRA_HOME}/hermes-agents-app"]="hermes.dihola.io"
 )
@@ -595,9 +604,19 @@ declare -gA INFRA_APP_ENV_FILES=(
   ["${INFRA_HOME}/api-test-scaffold-app"]="secrets/secrets.env"
   ["${INFRA_HOME}/ironclaw-agents-app"]="secrets/secrets.env"
   ["${INFRA_HOME}/slcfrontend-app"]="secrets/secrets.env"
-  ["${INFRA_HOME}/openclaw-agents-app"]="env.local"
+  ["${INFRA_HOME}/hermes-agents-app/homes/cornelius"]=".env"
   ["${INFRA_HOME}/hermes-agents-app"]="env.local"
   ["${INFRA_HOME}/grafanaloki-app"]=".env"
+)
+
+declare -gA INFRA_APP_NGINX=(
+  ["${INFRA_HOME}/hermes-agents-app/homes/cornelius"]="hermes-cornelius-nginx"
+  ["${INFRA_HOME}/hermes-agents-app"]="hermes-nginx"
+  ["${INFRA_HOME}/grafanaloki-app"]="monitoring-nginx"
+)
+
+declare -gA INFRA_MONITOR_STACK_EXTRA=(
+  [cornelius]="hermes-cornelius hermes-cornelius-auth hermes-cornelius-nginx"
 )
 
 declare -gA INFRA_API_PORTS=(
@@ -607,8 +626,8 @@ declare -gA INFRA_API_PORTS=(
   [ironclaw]=9443
   [slcfrontend]=13443
   # Telegram Bot API webhook ports: 80, 88, 443, 8443.
-  # openclaw-agents uses 8443; hermes-agent ingress 10443; ironclaw 9443.
-  [openclaw-agents]=8443
+  # Cornelius (Hermes) uses 8443; hermes-agent (Lemuel) ingress 10443; ironclaw 9443.
+  [cornelius]=8443
   [hermes-agent]=10443
 )
 
@@ -632,7 +651,7 @@ INFRA_PUBLIC_API_TCP_PORTS=(
   "${INFRA_API_PORTS[mintclient]}"
   "${INFRA_API_PORTS[ironclaw]}"
   "${INFRA_API_PORTS[slcfrontend]}"
-  "${INFRA_API_PORTS[openclaw-agents]}"
+  "${INFRA_API_PORTS[cornelius]}"
   "${INFRA_API_PORTS[hermes-agent]}"
 )
 # 80 / 88 are public Telegram webhook entry ports (REDIRECT to hermes / ironclaw).
@@ -647,8 +666,8 @@ INFRA_MONITOR_SERVICES=(
   "mintclient:mintclient-container::4443"
   # ironclaw-agents-app is present for certs; no ironclaw container is running.
   "slcfrontend:slcfrontend-nginx::13443"
-  "openclaw-agents:openclaw-nginx::8443"
-  # Hermes ingress (HERMES_TELEGRAM_PORT / HERMES_INGRESS_PORT=10443)
+  "cornelius:hermes-cornelius-nginx::8443"
+  # Hermes Lemuel ingress (HERMES_TELEGRAM_PORT / HERMES_INGRESS_PORT=10443)
   "hermes-agent:hermes::10443"
   # Grafana/Loki (https://grafana43.dihola.io:3333)
   "monitoring:monitoring-grafana:${INFRA_REPO}/start-monitoring-pod.sh:"
