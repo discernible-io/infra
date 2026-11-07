@@ -530,14 +530,14 @@ Hermes agent ingress (Cornelius + Lemuel), ironclaw, and the main-tier SLC front
 | signsanctum        | 1443 | signsanctum.dihola.io      |
 | mintclient         | 4443 | purchase.dihola.io         |
 | mintclient         | 4443 | verify.dihola.io (SAN on purchase cert) |
-| ironclaw           | 9443 | ironclaw.dihola.io; **88 → 9443** |
+| ironclaw           | 9443 | ironclaw.dihola.io (certs only on this host) |
 | slcfrontend (SLC)  | 13443 | lastcradle.io (+ www / identyclaw.com SAN); **443 → 13443** |
-| cornelius (Hermes) | 8443 | cornelius.dihola.io (+ SANs john/jay); was OpenClaw |
-| hermes-agent (Lemuel) | 10443 | hermes.dihola.io; **80 → 10443** (Telegram); **7443 → 10443** (Passport A2A → nginx → pod `:9900`) |
+| cornelius (Hermes) | 9088 | cornelius.dihola.io (+ SANs john/jay); **88 → 9088** (Telegram/A2A) |
+| olivia (Hermes default) | 10443 / 8443 | oliviatara.dihola.io; **80 → 10443** (Telegram); **8443** A2A publish; **7443 → 10443** alias |
 | monitoring         | 3100/3333 | grafana43.dihola.io     |
 
 Also allowed: **22** (SSH). Certbot HTTP-01 still uses a temporary allow on **80** when needed.
-Hermes nginx certs (Cornelius + Lemuel) are Let's Encrypt via `INFRA_APP_DOMAINS` (Telegram rejects self-signed).
+Hermes nginx certs (Cornelius + Olivia) are Let's Encrypt via `INFRA_APP_DOMAINS` (Telegram rejects self-signed). Lemuel (`hermes.dihola.io`) lives on another host.
 
 ```bash
 sudo ./configure-host-firewall-oneoff.sh enable permanent

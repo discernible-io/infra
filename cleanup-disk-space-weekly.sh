@@ -13,9 +13,9 @@
 #   6. /tmp temporary files + Bun embedded-native leaks + Cursor sandbox cache
 #   7. INFRA_USER Cursor remote-server bins + agent-cli versions + logs/tmp projects
 #   8. INFRA_USER Rust/Cargo + rustup tmp (not root's $HOME)
-#   9. INFRA_USER npm cache
+#   9. INFRA_USER npm cache + ~/.npm/_npx installs
 #   10. Unused Podman images (rootless store)
-#   11. Podman build cache including Buildah cache mounts
+#   11. Podman build/Storage containers, build cache, Buildah cache mounts
 #   12. Old Trivy scan artifacts under ~/infra-app/trivy-scan-results/
 #   13. Project logs and Cargo target/ dirs under INFRA_HOME
 #   14. Hermes agent memory backups (~/*-memory-backups)
@@ -53,6 +53,18 @@
 # CodeQL per-run databases under */itemdb/codeql/runs/ (rebuildable):
 #   CODEQL_RUNS_RETENTION_DAYS=7   (remove run dirs older than N days)
 #   CODEQL_RUNS_KEEP_NEWEST=3      (always keep at least N newest runs per project)
+#
+# npm npx installs under INFRA_HOME/.npm/_npx (not cleared by npm cache clean):
+#   NPM_NPX_RETENTION_DAYS=14   (remove hash dirs older than N days)
+#   NPM_NPX_KEEP_NEWEST=5       (always keep at least N newest hash dirs)
+#
+# Alma/RHEL logrotate uses dated suffixes (messages-YYYYMMDD), not messages.1:
+#   VAR_LOG_DATED_RETENTION_DAYS=7  (delete /var/log/*-YYYYMMDD older than N days)
+#
+# Podman: Buildah leaves Storage-status *-working-container entries that pin
+# intermediate <none> images. system prune -f alone misses them; prune --build
+# first (cannot combine with --external on Podman 5.x), optionally prune
+# --external alone, then image prune -a --build-cache.
 #
 # Log truncation covers Debian/Ubuntu (syslog, auth.log, kern.log) and
 # Alma/RHEL-style paths (/var/log/messages, /var/log/secure).
@@ -125,6 +137,55 @@ find_files_total_bytes() {
     [[ -n "$size" ]] && total=$((total + size))
   done < <(find "$@" -printf '%s\n' 2>/dev/null || true)
   echo "$total"
+}
+
+# Prune INFRA_USER ~/.npm/_npx hash installs. npm cache clean --force only
+# clears _cacache; _npx often holds hundreds of MB of stale package trees.
+clean_npm_npx() {
+  local npm_home="${1:-$(infra_user_home)/.npm}"
+  local npx_root="${npm_home}/_npx"
+  local retention_days="${NPM_NPX_RETENTION_DAYS:-14}"
+  local keep_newest="${NPM_NPX_KEEP_NEWEST:-5}"
+  local removed=0
+
+  if [[ ! -d "$npx_root" ]]; then
+    echo "ℹ️  No npm _npx dir at ${npx_root}, skipping..."
+    return 0
+  fi
+
+  echo "📋 npm _npx before cleanup:"
+  du_sh "$npx_root"
+
+  echo "🗑️  Cleaning npm _npx installs older than ${retention_days} day(s)..."
+  while IFS= read -r -d '' npx_dir; do
+    local npx_size
+    npx_size="$(du -sh "$npx_dir" 2>/dev/null | cut -f1 || echo '?')"
+    echo "  Removing (${npx_size}): $(basename "$npx_dir")"
+    rm -rf "$npx_dir" && removed=$((removed + 1)) || \
+      echo "  (failed to remove $npx_dir)"
+  done < <(find "$npx_root" -mindepth 1 -maxdepth 1 -type d \
+    -mtime "+${retention_days}" -print0 2>/dev/null)
+  echo "  Removed ${removed} aged _npx dir(s)"
+
+  local remaining
+  remaining="$(find "$npx_root" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')"
+  if [[ "$remaining" -gt "$keep_newest" ]]; then
+    local cap_removed=0 to_delete=$((remaining - keep_newest))
+    echo "🗑️  Capping npm _npx at ${keep_newest} newest (dropping ${to_delete} oldest)..."
+    while IFS= read -r -d '' npx_dir; do
+      local npx_size
+      npx_size="$(du -sh "$npx_dir" 2>/dev/null | cut -f1 || echo '?')"
+      echo "  Removing oldest (${npx_size}): $(basename "$npx_dir")"
+      rm -rf "$npx_dir" && cap_removed=$((cap_removed + 1)) || \
+        echo "  (failed to remove $npx_dir)"
+      [[ "$cap_removed" -ge "$to_delete" ]] && break
+    done < <(find "$npx_root" -mindepth 1 -maxdepth 1 -type d \
+      -printf '%T@ %p\0' 2>/dev/null | sort -z -n | cut -z -d' ' -f2-)
+    echo "  Removed ${cap_removed} oldest _npx dir(s) to cap"
+  fi
+
+  echo "📋 npm _npx after cleanup:"
+  du_sh "$npx_root"
 }
 
 # Remove Bun/OpenCode leaked embedded native libraries from /tmp.
@@ -658,8 +719,24 @@ echo ""
 echo "🗑️  Cleaning /var/log old logs and archives..."
 # Remove old compressed logs (*.gz files older than 30 days)
 sudo find /var/log -type f -name "*.gz" -mtime +30 -delete
-# Truncate old rotated logs (*.1, *.2, etc. older than 7 days)
+# Debian/Ubuntu numbered rotations (*.1, *.2, etc. older than 7 days)
 sudo find /var/log -type f -regex '.*\.[0-9]+$' -mtime +7 -delete
+# Alma/RHEL/Fedora dated rotations (messages-YYYYMMDD, secure-YYYYMMDD,
+# fail2ban.log-YYYYMMDD, btmp-YYYYMMDD, …). Numbered-regex above misses these.
+VAR_LOG_DATED_RETENTION_DAYS="${VAR_LOG_DATED_RETENTION_DAYS:-7}"
+echo "  Removing Alma/RHEL dated rotations older than ${VAR_LOG_DATED_RETENTION_DAYS} day(s)..."
+dated_removed=0
+while IFS= read -r -d '' dated_log; do
+  dated_size="$(du -h "$dated_log" 2>/dev/null | cut -f1 || echo '?')"
+  echo "  Removing (${dated_size}): $(basename "$dated_log")"
+  sudo rm -f "$dated_log" && dated_removed=$((dated_removed + 1)) || \
+    echo "  (failed to remove $dated_log)"
+done < <(
+  sudo find /var/log -maxdepth 1 -type f -regextype posix-extended \
+    -regex '.*/[^/]+-[0-9]{8}' \
+    -mtime "+${VAR_LOG_DATED_RETENTION_DAYS}" -print0 2>/dev/null || true
+)
+echo "  Removed ${dated_removed} dated rotation(s)"
 
 # Truncate large log files to free space
 # Keep last 50MB of syslog/kern/messages, 20MB of auth/secure
@@ -912,22 +989,41 @@ else
   echo ""
 fi
 
-# Clean npm cache as INFRA_USER (root's npm is a different store)
+# Clean npm cache + _npx as INFRA_USER (root's npm is a different store)
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-if run_as_infra_user bash -lc 'command -v npm >/dev/null'; then
-  echo "📋 npm cache disk usage before cleanup (${INFRA_USER}):"
-  run_as_infra_user npm cache verify 2>/dev/null | tail -1 || echo "  (unable to verify)"
+NPM_HOME="$(infra_user_home)/.npm"
+if [[ -d "$NPM_HOME" ]] || run_as_infra_user bash -lc 'command -v npm >/dev/null'; then
+  echo "📋 npm home disk usage before cleanup (${INFRA_USER}):"
+  if [[ -d "$NPM_HOME" ]]; then
+    du_sh "$NPM_HOME"
+    [[ -d "${NPM_HOME}/_npx" ]] && du_sh "${NPM_HOME}/_npx"
+    [[ -d "${NPM_HOME}/_cacache" ]] && du_sh "${NPM_HOME}/_cacache"
+  else
+    echo "  (no ${NPM_HOME} yet)"
+  fi
   echo ""
 
-  echo "🗑️  Cleaning ${INFRA_USER} npm cache..."
-  run_as_infra_user npm cache clean --force 2>/dev/null || echo "  (npm cache clean failed, may be empty)"
+  if run_as_infra_user bash -lc 'command -v npm >/dev/null'; then
+    echo "🗑️  Cleaning ${INFRA_USER} npm _cacache..."
+    run_as_infra_user npm cache clean --force 2>/dev/null || echo "  (npm cache clean failed, may be empty)"
+    echo ""
+  else
+    echo "ℹ️  npm not installed for ${INFRA_USER}; still pruning _npx if present..."
+    echo ""
+  fi
+
+  clean_npm_npx "$NPM_HOME"
   echo ""
 
-  echo "📋 npm cache disk usage after cleanup:"
-  run_as_infra_user npm cache verify 2>/dev/null | tail -1 || echo "  (cache verified)"
+  echo "📋 npm home disk usage after cleanup:"
+  if [[ -d "$NPM_HOME" ]]; then
+    du_sh "$NPM_HOME"
+  else
+    echo "  (npm home removed or absent)"
+  fi
   echo ""
 else
-  echo "ℹ️  npm not installed for ${INFRA_USER}, skipping..."
+  echo "ℹ️  No npm home and npm not installed for ${INFRA_USER}, skipping..."
   echo ""
 fi
 
@@ -936,6 +1032,20 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 if run_as_infra_user podman --version >/dev/null 2>&1; then
   echo "📦 Podman storage before cleanup (${INFRA_USER}):"
   run_as_infra_user podman system df || echo "  (podman system df failed)"
+  echo ""
+
+  # Buildah leaves Storage-status *-working-container entries that keep
+  # intermediate <none> images referenced (containers=1). image prune -a
+  # will not free those layers until the build containers are removed.
+  # Podman 5.x: --external cannot be combined with --build / -a / --volumes.
+  echo "🗑️  Pruning Buildah working containers (--build)..."
+  run_as_infra_user podman system prune -f --build || \
+    echo "  (build prune failed)"
+  echo ""
+
+  echo "🗑️  Pruning external storage leftovers (--external, separate invocation)..."
+  run_as_infra_user podman system prune -f --external || \
+    echo "  (external prune failed)"
   echo ""
 
   echo "🗑️  Removing unused Podman images and Buildah cache mounts..."
@@ -1061,7 +1171,7 @@ if [[ "$USER_SPACE_ONLY" -eq 1 ]]; then
   echo "  • --user-space: journal, /var/log, DNF, kernels, /var/cache, and root /tmp skipped"
 else
   echo "  • Journal logs cleaned (3 days retention, 500MB max)"
-  echo "  • /var/log old logs removed; large syslog/auth/kern/messages/secure truncated"
+  echo "  • /var/log old logs removed (incl. Alma/RHEL *-YYYYMMDD >${VAR_LOG_DATED_RETENTION_DAYS:-7}d); large syslog/auth/kern/messages/secure truncated"
   echo "  • DNF package cache cleaned"
   echo "  • Old kernels removed via dnf (installonly_limit=2)"
   echo "  • /var/cache temporary files cleaned"
@@ -1072,8 +1182,8 @@ echo "  • Cursor /tmp/cursor-sandbox-cache pruned (cargo-target + entries olde
 echo "  • Cursor ~/.cursor-server bins kept newest ${CURSOR_SERVER_BIN_KEEP_NEWEST:-2}; agent-cli versions kept newest ${CURSOR_AGENT_VERSIONS_KEEP_NEWEST:-2}"
 echo "  • Cursor server logs >${CURSOR_SERVER_LOGS_RETENTION_DAYS:-7}d and ~/.cursor/projects/tmp-* >${CURSOR_PROJECT_TMP_RETENTION_DAYS:-3}d pruned"
 echo "  • ${INFRA_USER} Cargo/rustup tmp cleaned (INFRA_HOME, not root \$HOME)"
-echo "  • ${INFRA_USER} npm cache cleaned"
-echo "  • Podman unused images, --mount=type=cache trees, and stopped containers pruned"
+echo "  • ${INFRA_USER} npm _cacache cleaned; _npx aged >${NPM_NPX_RETENTION_DAYS:-14}d / keep newest ${NPM_NPX_KEEP_NEWEST:-5}"
+echo "  • Podman Buildah Storage containers pruned (--build, then --external separately), then unused images / build-cache / stopped containers"
 echo "  • Trivy scan artifacts older than ${TRIVY_RESULTS_RETENTION_DAYS:-28} days removed"
 echo "  • Project log files truncated (files >100M)"
 echo "  • CodeQL run dirs pruned (>${CODEQL_RUNS_RETENTION_DAYS:-7}d old; keep ${CODEQL_RUNS_KEEP_NEWEST:-3} newest per project)"
@@ -1088,5 +1198,7 @@ echo "💡 Override Cursor server/agent keep: CURSOR_SERVER_BIN_KEEP_NEWEST=1 CU
 echo "💡 Override Bun /tmp leak retention: BUN_TMP_NATIVE_RETENTION_MINUTES=30 BUN_TMP_NATIVE_KEEP_NEWEST=10 sudo $0"
 echo "💡 Override CodeQL run retention: CODEQL_RUNS_RETENTION_DAYS=14 CODEQL_RUNS_KEEP_NEWEST=5 sudo $0"
 echo "💡 Override Hermes memory backup cap: HERMES_MEMORY_BACKUP_KEEP=30 HERMES_MEMORY_BACKUP_RETENTION_DAYS=90 HERMES_MEMORY_BACKUP_MAX_BYTES=67108864 sudo $0"
+echo "💡 Override Alma/RHEL dated log retention: VAR_LOG_DATED_RETENTION_DAYS=14 sudo $0"
+echo "💡 Override npm _npx retention: NPM_NPX_RETENTION_DAYS=7 NPM_NPX_KEEP_NEWEST=3 sudo $0"
 echo "💡 User-space only (no sudo): $0 --user-space"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
