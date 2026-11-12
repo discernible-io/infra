@@ -167,12 +167,31 @@ infra_ensure_extra_port_forward_rules() {
   done < <(infra_iter_extra_port_forwards)
 }
 
+# Drop stale REDIRECTs whose source port is now a direct INFRA_API_PORTS listen
+# (and is not still listed as an INFRA_EXTRA_PORT_FORWARDS source).
+# Example: after moving :7443 from Olivia alias → api-test-scaffold, purge 7443→10443.
+infra_reconcile_stale_api_port_redirects() {
+  local port src dest
+  declare -A extra_sources=()
+  while read -r src dest; do
+    [[ -n "$src" ]] || continue
+    extra_sources["$src"]=1
+  done < <(infra_iter_extra_port_forwards)
+
+  for port in ${INFRA_API_PORTS[@]+"${INFRA_API_PORTS[@]}"}; do
+    [[ -n "$port" ]] || continue
+    [[ -z "${extra_sources[$port]:-}" ]] || continue
+    infra_purge_nat_redirects_for_source "$port"
+  done
+}
+
 infra_ensure_port_forward_rules() {
   local source_port="${INFRA_PORT_FORWARD_SOURCE:-443}"
   local dest_port
   if dest_port="$(infra_resolve_port_forward_dest)"; then
     infra_apply_port_forward "$source_port" "$dest_port"
   fi
+  infra_reconcile_stale_api_port_redirects
   infra_ensure_extra_port_forward_rules
 }
 

@@ -10,9 +10,11 @@
 # Requires firewalld to be stopped/disabled (it replaces NAT and breaks inbound redirect).
 # On enable, the script exits if firewalld is active unless ALLOW_FIREWALLD=1 is set.
 #
-# Example (mintclient on 4443):
+# Destination comes from infra-app (INFRA_PORT_FORWARD_DEST / INFRA_PORT_FORWARD_SERVICE).
+# Examples:
+#   sudo ./configure-port-forwarding-oneoff.sh enable permanent
+#   sudo ./configure-port-forwarding-oneoff.sh enable permanent 443 mintclient
 #   sudo INFRA_PORT_FORWARD_DEST=4443 ./configure-port-forwarding-oneoff.sh enable permanent
-#   sudo ./configure-port-forwarding-oneoff.sh enable permanent 443 4443
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "$SCRIPT_DIR/infra-env-helper.sh" ]]; then
@@ -22,9 +24,12 @@ fi
 # shellcheck source=infra-iptables-helper.sh
 source "$SCRIPT_DIR/infra-iptables-helper.sh"
 
-# Default ports (SOURCE_PORT is the external port, DEST_PORT is where the service listens)
-DEFAULT_SOURCE_PORT=443
-DEFAULT_DEST_PORT="${INFRA_PORT_FORWARD_DEST:-5443}"
+# Default ports from infra-app (INFRA_PORT_FORWARD_DEST / INFRA_PORT_FORWARD_SERVICE).
+DEFAULT_SOURCE_PORT="${INFRA_PORT_FORWARD_SOURCE:-443}"
+DEFAULT_DEST_PORT=""
+if declare -F infra_resolve_port_forward_dest &>/dev/null; then
+    DEFAULT_DEST_PORT="$(infra_resolve_port_forward_dest 2>/dev/null || true)"
+fi
 
 # Parse arguments
 ACTION=${1:-status}
@@ -32,7 +37,7 @@ MODE=${2:-temporary}
 SOURCE_PORT=${3:-$DEFAULT_SOURCE_PORT}
 DEST_PORT=${4:-$DEFAULT_DEST_PORT}
 
-if declare -F infra_resolve_api_port &>/dev/null; then
+if [[ -n "$DEST_PORT" ]] && declare -F infra_resolve_api_port &>/dev/null; then
   if resolved="$(infra_resolve_api_port "$DEST_PORT" 2>/dev/null)"; then
     DEST_PORT="$resolved"
   fi
@@ -53,15 +58,16 @@ Modes:
   permanent  Changes survive reboot
 
 Ports:
-  source_port  First port (default: $DEFAULT_SOURCE_PORT)
-  dest_port    Second port or API service key (default: $DEFAULT_DEST_PORT
-               from INFRA_PORT_FORWARD_SERVICE / INFRA_PORT_FORWARD_DEST)
+  source_port  First port (default: $DEFAULT_SOURCE_PORT from INFRA_PORT_FORWARD_SOURCE)
+  dest_port    Second port or API service key (required from
+               INFRA_PORT_FORWARD_DEST / INFRA_PORT_FORWARD_SERVICE in infra-app,
+               or pass explicitly)
 
 Examples:
   $0                                    # Show status
-  $0 enable                             # Enable temporary mapping (defaults from infra-env-helper.sh)
+  $0 enable                             # Enable temporary mapping (defaults from infra-app)
   $0 enable permanent                   # Enable permanent mapping
-  $0 enable permanent 443 mintclient # 443 -> 4443 when mintclient is configured
+  $0 enable permanent 443 mintclient    # 443 -> service port when mintclient is configured
   $0 disable permanent                  # Disable and save permanently
   $0 enable temporary 80 8080           # Enable temporary mapping (80 -> 8080)
 EOF
@@ -72,9 +78,13 @@ if [ "$ACTION" = "status" ]; then
     echo "Port Mapping Status"
     echo "==================="
     echo ""
-    echo "Default ports: $DEFAULT_SOURCE_PORT -> $DEFAULT_DEST_PORT"
+    if [[ -n "$DEFAULT_DEST_PORT" ]]; then
+        echo "Default ports: $DEFAULT_SOURCE_PORT -> $DEFAULT_DEST_PORT"
+    else
+        echo "Default ports: $DEFAULT_SOURCE_PORT -> (unset; set INFRA_PORT_FORWARD_DEST or INFRA_PORT_FORWARD_SERVICE in infra-app)"
+    fi
     if [[ -n "${INFRA_PORT_FORWARD_SERVICE:-}" ]]; then
-        echo "Forward service: ${INFRA_PORT_FORWARD_SERVICE} (infra-env-helper.sh)"
+        echo "Forward service: ${INFRA_PORT_FORWARD_SERVICE} (infra-app via infra-env-helper.sh)"
     fi
     if declare -F infra_iter_extra_port_forwards &>/dev/null; then
         extra_lines="$(infra_iter_extra_port_forwards)"
@@ -118,9 +128,16 @@ if [[ "$MODE" != "permanent" && "$MODE" != "temporary" ]]; then
     exit 1
 fi
 
+# Require dest from infra-app profile or an explicit CLI argument (no hardcoded fallback).
+if [[ -z "$DEST_PORT" ]]; then
+    echo "Error: no destination port. Set INFRA_PORT_FORWARD_DEST or INFRA_PORT_FORWARD_SERVICE in infra-app," >&2
+    echo "       or pass dest_port explicitly (e.g. $0 $ACTION $MODE 443 <port|service>)." >&2
+    exit 1
+fi
+
 # Validate ports
 if ! [[ "$SOURCE_PORT" =~ ^[0-9]+$ ]] || ! [[ "$DEST_PORT" =~ ^[0-9]+$ ]]; then
-    echo "Error: Ports must be numeric"
+    echo "Error: Ports must be numeric (got source=$SOURCE_PORT dest=$DEST_PORT)"
     exit 1
 fi
 
@@ -170,8 +187,13 @@ case "$ACTION" in
         # Add new rules
         add_rules
 
-        # When enabling the profile default (443→DEST), also apply INFRA_EXTRA_PORT_FORWARDS.
+        # When enabling the profile default (443→DEST), reconcile extras:
+        # purge REDIRECTs for ports that are now direct API listens, then apply
+        # INFRA_EXTRA_PORT_FORWARDS (so retired aliases like 7443→hermes are dropped).
         if [[ "$SOURCE_PORT" == "$DEFAULT_SOURCE_PORT" && "$DEST_PORT" == "$DEFAULT_DEST_PORT" ]]; then
+            if declare -F infra_reconcile_stale_api_port_redirects &>/dev/null; then
+                infra_reconcile_stale_api_port_redirects
+            fi
             if declare -F infra_ensure_extra_port_forward_rules &>/dev/null; then
                 infra_ensure_extra_port_forward_rules
             fi
