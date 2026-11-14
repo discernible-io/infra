@@ -10,6 +10,7 @@
 #   AUTO_REBOOT=1              Reboot when dnf needs-restarting -r says yes
 #   UPGRADE_SECURITY_ONLY=1    Same as --security-only
 #   UPGRADE_DOWNLOAD_ONLY=1    Download packages only (no install)
+#   UPGRADE_EXCLUDE='pkg…'     Space-separated dnf --exclude list (optional)
 #
 # Default policy: apply updates, log reboot need, do NOT reboot.
 # Install timer via: sudo ./manage-weekly-maintenance.sh install
@@ -165,11 +166,23 @@ cmd_check() {
 
 apply_updates() {
   local -a args=(-y)
+  local -a extra_excludes=()
   if [[ "$DOWNLOAD_ONLY" == "1" ]]; then
     args+=(--downloadonly)
   fi
   if [[ "$SECURITY_ONLY" == "1" ]]; then
     args+=(--security)
+  fi
+  # Optional permanent skips (space-separated), e.g. broken EPEL ahead of baseos.
+  # Example: UPGRADE_EXCLUDE='python3-pyOpenSSL'
+  if [[ -n "${UPGRADE_EXCLUDE:-}" ]]; then
+    local pkg
+    # shellcheck disable=SC2086
+    for pkg in ${UPGRADE_EXCLUDE}; do
+      [[ -n "$pkg" ]] || continue
+      args+=(--exclude="$pkg")
+      extra_excludes+=("$pkg")
+    done
   fi
 
   echo -e "${BLUE}Applying OS updates via ${PKG} ${args[*]}${NC}"
@@ -180,10 +193,28 @@ apply_updates() {
   # yum/dnf historically used 100 for "nothing to do" on some check paths;
   # upgrade should be 0 on success.
   if [[ $rc -ne 0 ]]; then
+    # EPEL can publish deps Alma baseos cannot satisfy yet (e.g. pyOpenSSL
+    # wanting cryptography>=49 while baseos is still on 43). On Alma/DNF5,
+    # --skip-broken alone may still fail; --nobest keeps the installed
+    # candidate and upgrades everything else.
+    if [[ "$PKG" == dnf ]]; then
+      echo -e "${YELLOW}${PKG} upgrade failed (exit ${rc}); retrying with --nobest${NC}"
+      log_line warn "upgrade_retry nobest=1 prior_exit=${rc}"
+      set +e
+      "$PKG" upgrade "${args[@]}" --nobest
+      rc=$?
+      set -e
+    fi
+  fi
+  if [[ $rc -ne 0 ]]; then
     log_line error "upgrade_failed exit=${rc}"
     exit "$rc"
   fi
-  log_line ok "upgrade_applied security_only=${SECURITY_ONLY} download_only=${DOWNLOAD_ONLY}"
+  if [[ ${#extra_excludes[@]} -gt 0 ]]; then
+    log_line ok "upgrade_applied security_only=${SECURITY_ONLY} download_only=${DOWNLOAD_ONLY} exclude=${extra_excludes[*]}"
+  else
+    log_line ok "upgrade_applied security_only=${SECURITY_ONLY} download_only=${DOWNLOAD_ONLY}"
+  fi
 }
 
 maybe_reboot() {
