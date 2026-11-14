@@ -103,6 +103,7 @@ Most scripts accept `help`. Longer notes and the host software baseline live in 
 |--------|----------------|
 | `harden-server-oneoff.sh` | Bootstrap SSH, fail2ban, auditd hardening |
 | `apply-security-improvements-oneoff.sh` | SSH key cleanup + harden + firewall + optional API jail |
+| `scrub-secrets-oneoff.sh` | Scrub leaked secrets from history/files; validate/fix `secrets.env` owner+mode (`dry-run` \| `apply`); never rewrites secrets content |
 | `fix-audit-rules-oneoff.sh` | Repair audit watch rules when paths are missing |
 | `configure-fail2ban-api-scan-jail-oneoff.sh` | `install [logpath]` \| `remove` for API-scan fail2ban jail |
 | `configure-host-firewall-oneoff.sh` | Inbound TCP allowlist from the host profile |

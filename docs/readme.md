@@ -106,6 +106,7 @@ Scripts that used to be separate entry points are merged with a **subcommand** a
 - **`scan-containers-vulnerabilities-weekly.{service,timer}`** — Weekly Trivy timer (install via `manage-weekly-maintenance.sh install`)
 - **`harden-server-oneoff.sh`** — Bootstrap SSH, fail2ban, auditd hardening
 - **`apply-security-improvements-oneoff.sh`** — SSH keys cleanup + harden + firewall + optional API fail2ban jail
+- **`scrub-secrets-oneoff.sh`** — Scrub leaked secret values from shell history/other text files; validate (and on `apply`, fix) `secrets.env` ownership/mode (`0644`, owner `INFRA_USER`); never rewrites secrets content
 - **`fix-audit-rules-oneoff.sh`** — Repair audit watch rules when secrets paths are missing
 - **`configure-fail2ban-api-scan-jail-oneoff.sh`** — `install [logpath]` | `remove` for API-scan fail2ban jail
 
