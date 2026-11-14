@@ -51,6 +51,8 @@ echo "== App directories (certs/, logs/, data/, nginx/, secrets/) =="
 echo ""
 echo "== TLS: issue/renew + install to *-app =="
 printf 'n\n' | "$SCRIPT_DIR/renew-certs-all-monthly.sh" manual "$CERT_EMAIL"
+echo "== TLS: point certbot-renew.timer at infra renew (standalone :80 + 13d floor) =="
+"$SCRIPT_DIR/renew-certs-all-monthly.sh" install-timer
 
 echo ""
 echo "== Host firewall (iptables allowlist from infra-app profile) =="

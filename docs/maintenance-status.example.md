@@ -22,7 +22,7 @@ Host-local record of **installed automation on this machine**. Lives in **`~/inf
 | `cleanup-disk-space-weekly.timer` | | Sun ~03:00 |
 | `scan-containers-vulnerabilities-weekly.timer` | | Sun ~04:30 |
 | `update-monitoring-images-weekly.timer` | | Sun ~05:30 (Grafana/Loki rebuild; images ≥ 3d old) |
-| `certbot-renew.timer` | | OS package (if present) |
+| `certbot-renew.timer` | | OS timer; after `renew-certs-all-monthly.sh install-timer` runs infra script (standalone :80, 13d floor) |
 
 Quick check from `~/infra`:
 

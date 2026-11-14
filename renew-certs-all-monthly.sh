@@ -4,6 +4,12 @@
 # Usage:
 #   sudo ./renew-certs-all-monthly.sh certbot          # non-interactive (cron/timer)
 #   sudo ./renew-certs-all-monthly.sh manual [email]   # per-domain issue/renew + install + optional restart
+#   sudo ./renew-certs-all-monthly.sh install-timer    # point OS certbot-renew.service at this script
+#   sudo ./renew-certs-all-monthly.sh uninstall-timer  # restore stock certbot-renew.service ExecStart
+#
+# Renewal window: lineages get renew_before_expiry=13 days (floor). Certbot ARI may renew
+# earlier (~30d for Let's Encrypt). Stock certbot-renew.timer must use this script so
+# standalone HTTP-01 can open :80; otherwise attempts fail until near expiry.
 
 set -euo pipefail
 
@@ -21,9 +27,17 @@ source "$SCRIPT_DIR/prepare-httpd-for-certbot-helper.sh"
 
 DOMAINS=("${INFRA_CERT_DOMAINS[@]}")
 
+# Minimum remaining lifetime before certbot renew will attempt (lineage config).
+# ARI may still renew earlier; this is the latest we allow before expiry.
+RENEW_BEFORE_EXPIRY="${RENEW_BEFORE_EXPIRY:-13 days}"
+CERTBOT_RENEW_DROPIN_DIR="/etc/systemd/system/certbot-renew.service.d"
+CERTBOT_RENEW_DROPIN="${CERTBOT_RENEW_DROPIN_DIR}/infra-standalone.conf"
+
 usage() {
     echo "Usage: sudo $0 certbot"
     echo "       sudo $0 manual [email]"
+    echo "       sudo $0 install-timer"
+    echo "       sudo $0 uninstall-timer"
     exit 1
 }
 
@@ -31,6 +45,68 @@ require_root() {
     if [[ $EUID -ne 0 ]]; then
         echo -e "${RED}This script must be run as root (use sudo)${NC}" >&2
         exit 1
+    fi
+}
+
+# Ensure every lineage renews no later than RENEW_BEFORE_EXPIRY before notAfter.
+ensure_renew_before_expiry() {
+    local conf interval="$RENEW_BEFORE_EXPIRY"
+    local renewal_dir="/etc/letsencrypt/renewal"
+
+    [[ -d "$renewal_dir" ]] || return 0
+
+    echo -e "${YELLOW}Ensuring renew_before_expiry = ${interval} in ${renewal_dir}/*.conf${NC}"
+    shopt -s nullglob
+    for conf in "$renewal_dir"/*.conf; do
+        if grep -qE '^[[:space:]]*renew_before_expiry[[:space:]]*=' "$conf"; then
+            sed -i -E "s|^[[:space:]]*renew_before_expiry[[:space:]]*=.*|renew_before_expiry = ${interval}|" "$conf"
+        elif grep -qE '^\[renewalparams\]' "$conf"; then
+            sed -i -E "/^\[renewalparams\]/a renew_before_expiry = ${interval}" "$conf"
+        else
+            printf '\n[renewalparams]\nrenew_before_expiry = %s\n' "$interval" >>"$conf"
+        fi
+    done
+    shopt -u nullglob
+}
+
+mode_install_timer() {
+    require_root
+
+    if [[ ! -f /usr/lib/systemd/system/certbot-renew.service ]]; then
+        echo -e "${RED}certbot-renew.service not found (install certbot first)${NC}" >&2
+        exit 1
+    fi
+
+    ensure_renew_before_expiry
+
+    mkdir -p "$CERTBOT_RENEW_DROPIN_DIR"
+    cat >"$CERTBOT_RENEW_DROPIN" <<EOF
+# Managed by renew-certs-all-monthly.sh install-timer.
+# Stock certbot renew cannot satisfy standalone HTTP-01 (needs temporary :80).
+[Service]
+EnvironmentFile=
+ExecStart=
+ExecStart=${SCRIPT_DIR}/renew-certs-all-monthly.sh certbot
+EOF
+    chmod 644 "$CERTBOT_RENEW_DROPIN"
+    systemctl daemon-reload
+    systemctl enable --now certbot-renew.timer
+
+    echo -e "${GREEN}✓ certbot-renew.service now runs: ${SCRIPT_DIR}/renew-certs-all-monthly.sh certbot${NC}"
+    echo -e "${GREEN}✓ renew_before_expiry floor: ${RENEW_BEFORE_EXPIRY}${NC}"
+    systemctl cat certbot-renew.service --no-pager | tail -n 20 || true
+    systemctl list-timers certbot-renew.timer --no-pager || true
+}
+
+mode_uninstall_timer() {
+    require_root
+    if [[ -f "$CERTBOT_RENEW_DROPIN" ]]; then
+        rm -f "$CERTBOT_RENEW_DROPIN"
+        rmdir "$CERTBOT_RENEW_DROPIN_DIR" 2>/dev/null || true
+        systemctl daemon-reload
+        echo -e "${GREEN}✓ Removed infra drop-in; stock certbot-renew ExecStart restored${NC}"
+    else
+        echo -e "${YELLOW}No infra drop-in at ${CERTBOT_RENEW_DROPIN}${NC}"
     fi
 }
 
@@ -43,8 +119,10 @@ mode_certbot() {
     # EXIT trap always closes temporary :80 and restores NAT, including on set -e failure.
     setup_httpd_cleanup_trap
     ensure_httpd_stopped
+    ensure_renew_before_expiry
 
     echo -e "${BLUE}========== Automated Certificate Renewal ==========${NC}"
+    echo -e "${BLUE}Renewal floor: ${RENEW_BEFORE_EXPIRY} before expiry (ARI may renew earlier)${NC}"
 
     open_firewall_http_for_certbot
 
@@ -165,6 +243,8 @@ shift || true
 case "$MODE" in
     certbot|auto) mode_certbot ;;
     manual) mode_manual "${1:-}" ;;
+    install-timer) mode_install_timer ;;
+    uninstall-timer) mode_uninstall_timer ;;
     "") usage ;;
     *) echo -e "${RED}Unknown mode: $MODE${NC}" >&2; usage ;;
 esac

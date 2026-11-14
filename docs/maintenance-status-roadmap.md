@@ -45,7 +45,8 @@ Prefer **`manage-weekly-maintenance.sh`** (`install` | `enable` | `disable` | `s
 
 | Script | Notes |
 |--------|--------|
-| `renew-certs-all-monthly.sh manual` | Manual orchestration for Let’s Encrypt plus install to app dirs. Certs are ~90 days; use as a **manual backstop** if unattended renewal is not wired. Prefer `renew-certs-all-monthly.sh certbot` on a timer with hooks; see roadmap. Many hosts also use the OS **`certbot-renew.timer`**. |
+| `renew-certs-all-monthly.sh certbot` via OS **`certbot-renew.timer`** | Twice daily after `install-timer` (also run by `setup-host-oneoff.sh`). Opens temporary :80 for standalone, deploy-hook installs to apps. Lineages get **`renew_before_expiry = 13 days`** (floor); Let’s Encrypt ARI often renews earlier (~30d). Without the drop-in, stock `certbot renew` fails HTTP-01 and success slips near expiry. |
+| `renew-certs-all-monthly.sh manual` | Manual orchestration for Let’s Encrypt plus install to app dirs. Use as a **backstop**. |
 
 ### One-time or on-demand
 
@@ -105,22 +106,19 @@ Fleet domain/port reference: [production-hosts.md](./production-hosts.md). Live 
 
 Prioritize items that close gaps between “scripts exist” and “long uptime with minimal surprise.”
 
-1. **Unattended TLS renewal aligned with app install**  
-   `renew-certs-all-monthly.sh manual` prompts interactively for service restart. For production, use **`renew-certs-all-monthly.sh certbot`** on a timer plus the deploy hook that runs `install-certs-to-apps.sh` and reloads or restarts only what is needed, without `read`.
-
-2. **Optional auto-reboot after OS upgrades**  
+1. **Optional auto-reboot after OS upgrades**  
    Weekly upgrade already records `/var/lib/infra/reboot-required`. Consider host-local `AUTO_REBOOT=1` in the systemd unit only where a brief Sunday reboot is acceptable; otherwise keep manual reboot after reviewing the flag / `manage-weekly-maintenance.sh status`.
 
-3. **Backups and restore verification**  
+2. **Backups and restore verification**  
    No backup or restore-test script lives here; add runbooks or automation and a **monthly** or **quarterly** restore drill where data loss would hurt availability.
 
-4. **Disk hardware health (optional)**  
+3. **Disk hardware health (optional)**  
    For bare metal, consider periodic **SMART** or controller-specific health checks where relevant.
 
-5. **Single source of truth for monitoring paths**  
+4. **Single source of truth for monitoring paths**  
    Document **`MONITOR_USER`** and repo path once; `manage-monitoring-pods.sh` already resolves paths from the script location.
 
-6. **Bump Grafana/Loki version pins**  
+5. **Bump Grafana/Loki version pins**  
    `update-monitoring-images-weekly.sh` rebuilds the tags in `grafanaloki-app/.env`. Promoting to a newer upstream release (e.g. Grafana 11.6.x → 11.6.y) remains a manual `.env` / Dockerfile change.
 
 ---

@@ -90,7 +90,7 @@ Most scripts accept `help`. Longer notes and the host software baseline live in 
 | Script | What it does |
 |--------|----------------|
 | `generate-cert-letsencrypt.sh` | Issue a Let's Encrypt cert for a domain (optional SANs) |
-| `renew-certs-all-monthly.sh` | `certbot` (timer) or `manual [email]` (issue/install/restart) |
+| `renew-certs-all-monthly.sh` | `certbot` / `manual [email]` / `install-timer` (13d renew floor; wires OS `certbot-renew`) |
 | `install-certs-to-apps.sh` | Copy live certs into application directories |
 | `install-certs-on-renew-hook-helper.sh` | Certbot deploy hook (install + restart) |
 | `verify-certs-in-apps-weekly.sh` | Validate cert files and permissions under app trees |

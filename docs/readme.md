@@ -96,7 +96,7 @@ Scripts that used to be separate entry points are merged with a **subcommand** a
 
 ### Security and certificates
 - **`generate-cert-letsencrypt.sh`** — Issue a Let's Encrypt certificate for a domain (optional SANs via `INFRA_CERT_SAN_DOMAINS`)
-- **`renew-certs-all-monthly.sh`** — `certbot` (cron/timer) or `manual [email]` (per-domain issue + install + optional restart)
+- **`renew-certs-all-monthly.sh`** — `certbot` / `manual [email]` / `install-timer` (13d renew floor; wires OS `certbot-renew`)
 - **`install-certs-to-apps.sh`** — Copy live certs into application directories
 - **`install-certs-on-renew-hook-helper.sh`** — Certbot deploy hook (install + restart)
 - **`verify-certs-in-apps-weekly.sh`** — Validate cert files and permissions under app trees
