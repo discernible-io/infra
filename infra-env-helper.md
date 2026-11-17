@@ -266,6 +266,7 @@ source "${INFRA_REPO}/infra-env-helper-shared.sh"
 | mintclient      | 4443 | purchase.identyclaw.com        |
 | mintclient      | 4443 | verify.identyclaw.com (SAN on purchase cert) |
 | openclawagents  | 8443 | andrew.dihola.io, joe.dihola.io, daniel.dihola.io, identyclaw-concierge.identyclaw.com (`~/openclaw-agents-app`; Telegram-compatible) |
+| livekitworker   | —    | none (outbound-only LiveKit Cloud agent; `~/livekitworker-app`; co-located with mintclient; no firewall/port-forward) |
 | monitoring      | 3335 | grafana46.discernible.io (3333 in stack) |
 
 Also allowed: **443** (redirect to mintclient **4443**), monitoring **3100**,
@@ -314,7 +315,18 @@ declare -gA INFRA_APP_DOMAINS=(
   ["${INFRA_HOME}/mintserver-app"]="identyclaw.discernible.io"
   ["${INFRA_HOME}/mintclient-app"]="purchase.identyclaw.com"
   ["${INFRA_HOME}/openclaw-agents-app"]="identyclaw-concierge.identyclaw.com"
+  # No public URL/port — outbound-only LiveKit Cloud agent (empty domain: no cert / no 443).
+  ["${INFRA_HOME}/livekitworker-app"]=""
   ["${INFRA_HOME}/grafanaloki-app"]="$INFRA_MONITORING_DOMAIN"
+)
+
+declare -gA INFRA_APP_ENV_FILES=(
+  ["${INFRA_HOME}/mintroot-app"]="secrets/secrets.env"
+  ["${INFRA_HOME}/mintserver-app"]="secrets/secrets.env"
+  ["${INFRA_HOME}/mintclient-app"]="secrets/secrets.env"
+  ["${INFRA_HOME}/openclaw-agents-app"]="env.local"
+  ["${INFRA_HOME}/livekitworker-app"]="secrets/secrets.env"
+  ["${INFRA_HOME}/grafanaloki-app"]=".env"
 )
 
 declare -gA INFRA_API_PORTS=(
@@ -333,6 +345,8 @@ INFRA_MONITOR_SERVICES=(
   "mintserver:mintserver-container::2443"
   "mintclient:mintclient-container::4443"
   "openclawagents:openclaw-nginx::8443"
+  # Liveness only — no host listen port (outbound to LiveKit Cloud).
+  "livekitworker:livekitworker-agent::"
 )
 INFRA_CERT_EMAIL="${INFRA_CERT_EMAIL:-admin@discernible.io}"
 INFRA_API_SCAN_LOGPATH="${INFRA_API_SCAN_LOGPATH:-/var/log/mintserver/api.log}"

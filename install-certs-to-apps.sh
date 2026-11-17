@@ -74,6 +74,13 @@ for APP_DIR in "${!INFRA_APP_DOMAINS[@]}"; do
         echo ""
         continue
     fi
+
+    # Empty domain = outbound-only / no public TLS (e.g. livekitworker) — no LE install.
+    if [[ -z "$DOMAIN" ]]; then
+        echo -e "  ${GREEN}✓ No public domain — skipping LE cert install${NC}"
+        echo ""
+        continue
+    fi
     
     # Check if certificate exists (skip if LE not issued on this host yet)
     if [[ ! -d "$CERT_PATH" ]]; then

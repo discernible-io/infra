@@ -126,7 +126,17 @@ for APP_DIR in "${!INFRA_APP_DOMAINS[@]}"; do
     # --- TLS certificates ---
     echo -e "  ${BLUE}TLS certificates${NC}"
 
-    if [[ ! -d "$CERTS_DIR" ]]; then
+    # Empty INFRA_APP_DOMAINS value = outbound-only / no public TLS (e.g. livekitworker).
+    # Layout may still have certs/; do not require LE PEMs or hostname match.
+    if [[ -z "$DOMAIN" ]]; then
+        echo -e "  ${GREEN}✓ No public domain — skipping LE PEM / hostname checks${NC}"
+        if [[ -d "$CERTS_DIR" ]]; then
+            check_mode "$CERTS_DIR" "certs/" 711
+            print_host_stat "$CERTS_DIR"
+        else
+            echo -e "  ${YELLOW}⚠ Certs directory not present (optional for outbound-only apps)${NC}"
+        fi
+    elif [[ ! -d "$CERTS_DIR" ]]; then
         echo -e "  ${RED}✗ Certs directory missing: $CERTS_DIR${NC}"
         ((ISSUES_FOUND++)) || true
     else
