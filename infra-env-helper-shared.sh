@@ -55,8 +55,10 @@ infra_ensure_assoc_array INFRA_POD_START_ENV
 # Optional host maps (set in ~/infra-app/infra-env-helper.sh):
 #   INFRA_APP_NGINX[app_dir]=nginx-container
 #   INFRA_MONITOR_STACK_EXTRA[service]="container1 container2 …"
+#   INFRA_APP_CERT_EXTRA_PEMS[app_dir]="fullchain-alias.pem:privkey-alias.pem …"
 infra_ensure_assoc_array INFRA_APP_NGINX
 infra_ensure_assoc_array INFRA_MONITOR_STACK_EXTRA
+infra_ensure_assoc_array INFRA_APP_CERT_EXTRA_PEMS
 
 infra_monitoring_restrict_enabled() {
   [[ "${INFRA_MONITORING_TCP_RESTRICT:-}" == "1" || "${INFRA_MONITORING_TCP_RESTRICT:-}" == "true" ]]

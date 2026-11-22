@@ -46,6 +46,12 @@ declare -A INFRA_APP_NGINX=(
   ["${INFRA_HOME}/hermes-agents-app/homes/cornelius"]="hermes-cornelius-nginx"
 )
 
+# Extra PEM basenames to install from the app's primary LE lineage (SANs).
+# Value: space-separated fullchain:privkey pairs under <app>/certs/.
+declare -A INFRA_APP_CERT_EXTRA_PEMS=(
+  ["${INFRA_HOME}/hermes-agents-app"]="fullchain-hermes.pem:privkey-hermes.pem"
+)
+
 # Extra containers for liveness / stack restart beyond name conventions.
 declare -A INFRA_MONITOR_STACK_EXTRA=(
   [cornelius]="hermes-cornelius hermes-cornelius-auth hermes-cornelius-nginx"

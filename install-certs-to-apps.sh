@@ -106,29 +106,68 @@ for APP_DIR in "${!INFRA_APP_DOMAINS[@]}"; do
     fi
     chmod 0711 "$CERTS_DIR" 2>/dev/null || true
     
-    # Copy certificates
+    # Copy certificates (always fullchain.pem + privkey.pem).
+    # Optional extra basenames from ~/infra-app INFRA_APP_CERT_EXTRA_PEMS[app_dir]
+    # as "fullchain-alias.pem:privkey-alias.pem" pairs (same LE lineage / SANs).
+    CERT_PEMS=(fullchain.pem privkey.pem)
     if ! cp "$CERT_PATH/fullchain.pem" "$CERTS_DIR/fullchain.pem" 2>/dev/null; then
         echo -e "  ${RED}✗ Failed to copy fullchain.pem${NC}"
         FAILED_APPS+=("$APP_NAME")
         echo ""
         continue
     fi
-    
+
     if ! cp "$CERT_PATH/privkey.pem" "$CERTS_DIR/privkey.pem" 2>/dev/null; then
         echo -e "  ${RED}✗ Failed to copy privkey.pem${NC}"
         FAILED_APPS+=("$APP_NAME")
         echo ""
         continue
     fi
-    
+
+    extra_pairs="${INFRA_APP_CERT_EXTRA_PEMS[$APP_DIR]:-}"
+    copy_failed=0
+    if [[ -n "$extra_pairs" ]]; then
+        for pair in $extra_pairs; do
+            extra_full="${pair%%:*}"
+            extra_key="${pair#*:}"
+            if [[ -z "$extra_full" || -z "$extra_key" || "$extra_full" == "$pair" ]]; then
+                echo -e "  ${RED}✗ Invalid INFRA_APP_CERT_EXTRA_PEMS entry: $pair (want fullchain.pem:privkey.pem)${NC}"
+                copy_failed=1
+                break
+            fi
+            if ! cp "$CERT_PATH/fullchain.pem" "$CERTS_DIR/$extra_full" 2>/dev/null \
+                || ! cp "$CERT_PATH/privkey.pem" "$CERTS_DIR/$extra_key" 2>/dev/null; then
+                echo -e "  ${RED}✗ Failed to copy extra PEM pair $extra_full / $extra_key${NC}"
+                copy_failed=1
+                break
+            fi
+            CERT_PEMS+=("$extra_full" "$extra_key")
+            echo -e "  ${GREEN}✓ Also installed $extra_full + $extra_key${NC}"
+        done
+    fi
+    if [[ "$copy_failed" -ne 0 ]]; then
+        FAILED_APPS+=("$APP_NAME")
+        echo ""
+        continue
+    fi
+
     echo -e "  ${GREEN}✓ Copied certificates${NC}"
 
     # Host user must own files before podman unshare can map to container UID 101.
-    chown "$INFRA_USER:$INFRA_USER" "$CERTS_DIR/fullchain.pem" "$CERTS_DIR/privkey.pem"
+    chown_paths=()
+    for pem in "${CERT_PEMS[@]}"; do
+        chown_paths+=("$CERTS_DIR/$pem")
+    done
+    chown "$INFRA_USER:$INFRA_USER" "${chown_paths[@]}"
 
     # Set permissions before namespace ownership (chmod as root is reliable).
-    chmod 0644 "$CERTS_DIR/fullchain.pem" 2>/dev/null || true
-    chmod 0600 "$CERTS_DIR/privkey.pem" 2>/dev/null || true
+    for pem in "${CERT_PEMS[@]}"; do
+        if [[ "$pem" == privkey* ]]; then
+            chmod 0600 "$CERTS_DIR/$pem" 2>/dev/null || true
+        else
+            chmod 0644 "$CERTS_DIR/$pem" 2>/dev/null || true
+        fi
+    done
 
     # Set ownership via the deploy user's subuid namespace so that
     # container UID 101 (nginx) owns the cert files.  Must run as
@@ -136,7 +175,7 @@ for APP_DIR in "${!INFRA_APP_DOMAINS[@]}"; do
     user_uid="$(id -u "$INFRA_USER")"
     if runuser -u "$INFRA_USER" -- env XDG_RUNTIME_DIR="/run/user/$user_uid" \
          podman unshare chown ${NGINX_UID}:${NGINX_GID} \
-           "$CERTS_DIR/fullchain.pem" "$CERTS_DIR/privkey.pem"; then
+           "${chown_paths[@]}"; then
         echo -e "  ${GREEN}✓ Set ownership to ${NGINX_UID}:${NGINX_GID} (via $INFRA_USER namespace)${NC}"
     else
         echo -e "  ${RED}✗ Podman unshare ownership failed for $APP_NAME${NC}" >&2
@@ -144,8 +183,8 @@ for APP_DIR in "${!INFRA_APP_DOMAINS[@]}"; do
         echo ""
         continue
     fi
-    
-    echo -e "  ${GREEN}✓ Set permissions: fullchain.pem (0644), privkey.pem (0600)${NC}"
+
+    echo -e "  ${GREEN}✓ Set permissions: fullchain* (0644), privkey* (0600)${NC}"
     
     # Display certificate info
     echo -e "  ${YELLOW}Certificate details:${NC}"
