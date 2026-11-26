@@ -157,7 +157,7 @@ Bootstrap: `sudo ./setup-host-oneoff.sh`
 - **mintroot** — root.discernible.io:6443
 - **mintserver** — identyclaw.discernible.io:2443
 - **mintclient** — purchase.identyclaw.com:4443 (443→4443 redirect)
-- **openclaw-agents** — andrew/joe/daniel.dihola.io + identyclaw-concierge.identyclaw.com:8443
+- **hermes-agent** — identyclaw-concierge.identyclaw.com:8443 (Lemuel) + SAN hermes.dihola.io (Hermes Trimegisto)
 - **grafanaloki** — grafana46.discernible.io (host port 3335)
 
 Bootstrap: `sudo ./setup-host-oneoff.sh`

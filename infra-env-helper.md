@@ -271,15 +271,15 @@ source "${INFRA_REPO}/infra-env-helper-shared.sh"
 | mintserver      | 2443 | identyclaw.discernible.io      |
 | mintclient      | 4443 | purchase.identyclaw.com        |
 | mintclient      | 4443 | verify.identyclaw.com (SAN on purchase cert) |
-| openclawagents  | 8443 | andrew.dihola.io, joe.dihola.io, daniel.dihola.io, identyclaw-concierge.identyclaw.com (`~/openclaw-agents-app`; Telegram-compatible) |
+| hermes-agent    | 8443 | identyclaw-concierge.identyclaw.com (Lemuel Gulliver); SAN `hermes.dihola.io` (Hermes Trimegisto); `~/hermes-agents-app` |
 | livekitworker   | —    | none (outbound-only LiveKit Cloud agent; `~/livekitworker-app`; co-located with mintclient; no firewall/port-forward) |
 | monitoring      | 3335 | grafana46.discernible.io (3333 in stack) |
 
 Also allowed: **443** (redirect to mintclient **4443**), monitoring **3100**,
-**22** (SSH). Port **80** is temporary only for certbot (`allow-http-temporary`).
-OpenClaw ingress is **8443** (`IDENTYCLAW_INGRESS_PORT` in `~/openclaw-agents-app/env.local`);
-host Podman must publish **8443→8443**. Telegram Bot API webhooks only accept **80, 88, 443, or 8443**.
-Ports **88** and **7443** are retired here and listed in `INFRA_BLOCKED_PUBLIC_TCP_PORTS`.
+**22** (SSH). Port **80** aliases to Hermes (`INFRA_EXTRA_PORT_FORWARDS`) and is also used temporarily for certbot.
+Hermes ingress is **8443** (container **10443**); Telegram Bot API webhooks only accept **80, 88, 443, or 8443**.
+Ports **10443** and **7443** are blocked publicly (`INFRA_BLOCKED_PUBLIC_TCP_PORTS`).
+andrew/daniel/joe/oliviatara.dihola.io are not on this host.
 
 Host **dedalo46** — domain→port table for iptables is summarized in
 `infra-iptables-helper.sh` (chain `INFRA_HOST_FW`, 443→4443 NAT). Persist with:
@@ -313,24 +313,28 @@ INFRA_CERT_DOMAINS=(
 
 declare -gA INFRA_CERT_SAN_DOMAINS=(
   ["purchase.identyclaw.com"]="verify.identyclaw.com"
-  ["identyclaw-concierge.identyclaw.com"]="andrew.dihola.io joe.dihola.io daniel.dihola.io"
+  ["identyclaw-concierge.identyclaw.com"]="hermes.dihola.io"
 )
 
 declare -gA INFRA_APP_DOMAINS=(
   ["${INFRA_HOME}/mintroot-app"]="root.discernible.io"
   ["${INFRA_HOME}/mintserver-app"]="identyclaw.discernible.io"
   ["${INFRA_HOME}/mintclient-app"]="purchase.identyclaw.com"
-  ["${INFRA_HOME}/openclaw-agents-app"]="identyclaw-concierge.identyclaw.com"
+  ["${INFRA_HOME}/hermes-agents-app"]="identyclaw-concierge.identyclaw.com"
   # No public URL/port — outbound-only LiveKit Cloud agent (empty domain: no cert / no 443).
   ["${INFRA_HOME}/livekitworker-app"]=""
   ["${INFRA_HOME}/grafanaloki-app"]="$INFRA_MONITORING_DOMAIN"
+)
+
+declare -gA INFRA_APP_CERT_EXTRA_PEMS=(
+  ["${INFRA_HOME}/hermes-agents-app"]="fullchain-hermes.pem:privkey-hermes.pem"
 )
 
 declare -gA INFRA_APP_ENV_FILES=(
   ["${INFRA_HOME}/mintroot-app"]="secrets/secrets.env"
   ["${INFRA_HOME}/mintserver-app"]="secrets/secrets.env"
   ["${INFRA_HOME}/mintclient-app"]="secrets/secrets.env"
-  ["${INFRA_HOME}/openclaw-agents-app"]="env.local"
+  ["${INFRA_HOME}/hermes-agents-app"]="env.local"
   ["${INFRA_HOME}/livekitworker-app"]="secrets/secrets.env"
   ["${INFRA_HOME}/grafanaloki-app"]=".env"
 )
@@ -339,18 +343,22 @@ declare -gA INFRA_API_PORTS=(
   [mintroot]=6443
   [mintserver]=2443
   [mintclient]=4443
-  [openclawagents]=8443
+  [hermes-agent]=8443
+)
+
+INFRA_EXTRA_PORT_FORWARDS=(
+  "80:hermes-agent"
 )
 
 INFRA_MONITORING_TCP_PORTS=(3100 3335)
 INFRA_MONITORING_CERTS_DIR="${INFRA_MONITORING_CERTS_DIR:-${INFRA_HOME}/grafanaloki-app/certs}"
 INFRA_PORT_FORWARD_SERVICE="${INFRA_PORT_FORWARD_SERVICE:-mintclient}"
-INFRA_BLOCKED_PUBLIC_TCP_PORTS=(88 7443)
+INFRA_BLOCKED_PUBLIC_TCP_PORTS=(10443 7443)
 INFRA_MONITOR_SERVICES=(
   "mintroot:mintroot-container::6443"
   "mintserver:mintserver-container::2443"
   "mintclient:mintclient-container::4443"
-  "openclawagents:openclaw-nginx::8443"
+  "hermes-agent:hermes-nginx::8443"
   # Liveness only — no host listen port (outbound to LiveKit Cloud).
   "livekitworker:livekitworker-agent::"
 )
