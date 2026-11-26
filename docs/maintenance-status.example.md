@@ -23,6 +23,7 @@ Host-local record of **installed automation on this machine**. Lives in **`~/inf
 | `scan-containers-vulnerabilities-weekly.timer` | | Sun ~04:30 |
 | `update-monitoring-images-weekly.timer` | | Sun ~05:30 (Grafana/Loki rebuild; images ≥ 3d old) |
 | `certbot-renew.timer` | | OS timer; after `renew-certs-all-monthly.sh install-timer` runs infra script (standalone :80, 13d floor) |
+| eBPF diagnostics (`bcc-tools` / `bpftrace`) | | Installed via `manage-ebpf-diagnostics.sh install`; on-demand `sample` / `help` (no timer) |
 
 Quick check from `~/infra`:
 
@@ -30,6 +31,7 @@ Quick check from `~/infra`:
 ./manage-weekly-maintenance.sh status
 ./manage-monitoring-pods.sh status
 ./host-uptime-prep.sh status
+./manage-ebpf-diagnostics.sh status
 ```
 
 ## Host firewall

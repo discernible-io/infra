@@ -40,6 +40,10 @@ echo "== Weekly maintenance timers (cleanup + vulnerability scan) =="
 "$SCRIPT_DIR/manage-weekly-maintenance.sh" install
 
 echo ""
+echo "== eBPF diagnostics (bcc-tools + bpftrace; on-demand only, no timer) =="
+"$SCRIPT_DIR/manage-ebpf-diagnostics.sh" install
+
+echo ""
 echo "== Pod monitor (systemd) =="
 export MONITOR_USER="$INFRA_USER"
 printf 'n\ny\n' | "$SCRIPT_DIR/manage-monitoring-pods.sh" install

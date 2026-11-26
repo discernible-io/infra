@@ -67,9 +67,10 @@ Most scripts accept `help`. Longer notes and the host software baseline live in 
 |--------|----------------|
 | `bootstrap-infra-app.sh` | Create `~/infra-app/`, install a host profile, optional `--with-app-dirs` / `--status` |
 | `bootstrap-app-dir-layout.sh` | Create or repair `*-app/` trees (`certs/`, `secrets/`, …) from the profile |
-| `setup-host-oneoff.sh` | One-shot bootstrap: rootless Podman, timers, pod monitor, TLS, firewall, optional 443 redirect |
+| `setup-host-oneoff.sh` | One-shot bootstrap: rootless Podman, timers, eBPF packages, pod monitor, TLS, firewall, optional 443 redirect |
 | `golive.sh` | Reboot-persistence bundle (monitor, weekly timers, uptime, firewall, container restarts) |
-| `apply-health-recommendations.sh` | Rootless Podman + weekly maintenance timers + status summary |
+| `apply-health-recommendations.sh` | Rootless Podman + weekly maintenance timers + eBPF packages + status summary |
+| `manage-ebpf-diagnostics.sh` | `install` \| `status` \| `sample [--seconds N]` \| `help` — BCC/bpftrace on-demand probes (no timer) |
 | `infra-env-helper.sh` | Loader that sources `~/infra-app/infra-env-helper.sh` |
 | `infra-env-helper-shared.sh` | Shared profile helpers sourced by the host profile |
 

@@ -27,3 +27,4 @@
 - Expand beyond Fail2ban with resource monitoring (node_exporter, Grafana alerts) and anomaly detection for CPU, memory, and traffic spikes.
 - Configure health probes for each service and alert on repeated failures or container restarts.
 - Track application metrics and 4xx/5xx error rates to detect probing or exploitation attempts.
+- Keep **`bcc-tools`** / **`bpftrace`** installed for on-demand latency and I/O diagnosis (`sudo ./manage-ebpf-diagnostics.sh install`); use `sample` / `help` during incidents — do not run continuous eBPF probes as a blind weekly job.

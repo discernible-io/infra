@@ -47,6 +47,7 @@ Baseline packages on an AlmaLinux 10 development host (representative `dnf` name
 
 ### Monitoring / admin
 - `btop`, `mc`, `ncdu`, `jq`, `bind-utils`
+- `bcc-tools`, `bpftrace` — on-demand eBPF latency/I/O probes (`manage-ebpf-diagnostics.sh`; no timer)
 
 ### Node (OS packages)
 - NodeSource `nodejs` **22.23.4** (matches `docs` cicd/coding pin; Node 20 has no CVE-2026-111497 fix)
@@ -114,7 +115,8 @@ Scripts that used to be separate entry points are merged with a **subcommand** a
 - **`bootstrap-infra-app.sh`** — Create `~/infra-app/`, host profile, `maintenance-status.md` template
 - **`bootstrap-app-dir-layout.sh`** — Create or repair `*-app/` directory trees
 - **`golive.sh`** — Reboot-persistence bundle: pod monitor, weekly timers, host-uptime, firewall, container restarts (no SSH hardening or cert issue)
-- **`apply-health-recommendations.sh`** — Rootless Podman + weekly maintenance timers + status summary
+- **`apply-health-recommendations.sh`** — Rootless Podman + weekly maintenance timers + eBPF packages + status summary
+- **`manage-ebpf-diagnostics.sh`** — `install` | `status` | `sample [--seconds N]` | `help` — BCC/bpftrace packages for on-demand host latency/I/O probes (no systemd timer)
 - **`manage-weekly-maintenance.sh`** — `install` | `enable` | `disable` | `status` for OS upgrade + cleanup + Trivy + monitoring-image weekly timers
 - **`install-weekly-maintenance-timers.sh`** — Legacy alias for weekly timer install
 - **`upgrade-host-packages-weekly.sh`** — Weekly `dnf upgrade` (Sun 02:00 timer); `--check` / `--security-only` / `--reboot-if-needed`
@@ -127,7 +129,7 @@ Scripts that used to be separate entry points are merged with a **subcommand** a
 - **`enable-podman-boot-autostart.sh`** — Podman autostart on reboot for `INFRA_USER`
 - **`configure-port-forwarding-oneoff.sh`** — iptables 443→`INFRA_PORT_FORWARD_DEST` REDIRECT (service name or port)
 - **`configure-host-firewall-oneoff.sh`** — inbound TCP allowlist from `~/infra-app/infra-env-helper.sh`
-- **`setup-host-oneoff.sh`** — One-shot bootstrap: rootless Podman, weekly timers, pod monitor, app dirs, TLS, firewall, optional 443 redirect
+- **`setup-host-oneoff.sh`** — One-shot bootstrap: rootless Podman, weekly timers, eBPF diagnostics packages, pod monitor, app dirs, TLS, firewall, optional 443 redirect
 - **`manage-mail-sender.sh`** — Himalaya SMTP sender: `sudo ./manage-mail-sender.sh install`, then `status` or `send --to ADDR --subject TEXT [--body TEXT] [--account NAME]`. Add `--html` or `--html-file FILE` to send HTML with local images embedded. Accounts live in `~/infra-app/mail/smtp.env` with passwords in `smtp-password.<account>` (see [mail-sender.env.example](mail-sender.env.example)). It does not hook host-uptime or fail2ban.
 
 ## RODiT wallet usage

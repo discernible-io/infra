@@ -40,6 +40,7 @@ Prefer **`manage-weekly-maintenance.sh`** (`install` | `enable` | `disable` | `s
 | `update-monitoring-images-weekly.sh` via `update-monitoring-images-weekly.timer` | Sun **05:30** (+ up to 15 min jitter) | Pull upstream Grafana/Loki bases (must be ≥ **3 days** old), rebuild hardened images from `grafanaloki-app`, redeploy `monitoring-pod`. Skips when local images are newer than `MIN_IMAGE_AGE_DAYS` (default 3) unless `--force`. Does **not** bump `.env` pins — only rebuilds the pinned tags. |
 | `verify-certs-in-apps-weekly.sh` | Manual / after deploy | Validates cert files and permissions under app trees; good alongside renewal checks. |
 | `manage-monitoring-pods.sh status` | Manual | Confirms `monitor-pods-liveness.timer` and recent `/var/log/pod-monitor.log` lines. |
+| `manage-ebpf-diagnostics.sh` | Setup once; sample on demand | Installs `bcc-tools` + `bpftrace` (via `setup-host-oneoff.sh` / `apply-health-recommendations.sh`). Optional short `sample` (default 30s) for I/O + run-queue latency; **no systemd timer**. Use `help` for incident probes. |
 
 ### Monthly (or policy-driven)
 
@@ -56,9 +57,10 @@ Prefer **`manage-weekly-maintenance.sh`** (`install` | `enable` | `disable` | `s
 | `bootstrap-app-dir-layout.sh` | Create or repair `*-app/` trees (`certs/`, `logs/`, `secrets/`, …). |
 | `host-uptime-prep.sh` `init` / `enable-permanent` | Install and enable the hourly timer. |
 | `golive.sh` | Reboot-persistence bundle: pod monitor, rootless Podman socket, **weekly maintenance timers**, host-uptime timer, `unless-stopped` on Podman containers, API restarts, monitoring pod, **host firewall** (`configure-host-firewall-oneoff.sh enable permanent`), status. Run **`sudo ./golive.sh`**; Podman steps use **`INFRA_USER`** via `runuser` (rootless store). Optional **`--with-port-forwarding`** for 443 REDIRECT. Does **not** harden SSH or issue certs. |
-| `setup-host-oneoff.sh` | Full bootstrap from `~/infra-app`: rootless Podman, weekly timers, pod monitor, app layout, TLS, firewall, optional 443 redirect. |
+| `setup-host-oneoff.sh` | Full bootstrap from `~/infra-app`: rootless Podman, weekly timers, eBPF diagnostics packages, pod monitor, app layout, TLS, firewall, optional 443 redirect. |
 | `apply-security-improvements-oneoff.sh` | SSH `authorized_keys` cleanup, `harden-server-oneoff.sh`, host firewall, optional idclaw API fail2ban jail, verification. |
-| `apply-health-recommendations.sh` | Rootless Podman linger/socket, weekly maintenance timers, firewall status summary. |
+| `apply-health-recommendations.sh` | Rootless Podman linger/socket, weekly maintenance timers, eBPF diagnostics packages, firewall status summary. |
+| `manage-ebpf-diagnostics.sh` | `install` \| `status` \| `sample [--seconds N]` \| `help` — BCC/bpftrace for on-demand latency/I/O diagnosis (no timer). |
 | `harden-server-oneoff.sh` | Bootstrap or rare hardening change (SSH key-only, fail2ban, auditd, secrets watch). |
 | `fix-audit-rules-oneoff.sh` | Repair audit watch rules when secrets paths moved or are missing. |
 | `configure-host-firewall-oneoff.sh` | Restrict inbound TCP to admin + public ports from `~/infra-app/infra-env-helper.sh`. Use **`sudo ./configure-host-firewall-oneoff.sh enable permanent`**; verify with **`sudo … status`** (non-root cannot read iptables). |
@@ -88,6 +90,7 @@ Verify from `~/infra`:
 ./manage-weekly-maintenance.sh status
 ./manage-monitoring-pods.sh status
 ./host-uptime-prep.sh status
+./manage-ebpf-diagnostics.sh status
 sudo ./configure-host-firewall-oneoff.sh status
 ```
 
